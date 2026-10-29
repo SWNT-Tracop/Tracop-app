@@ -690,10 +690,10 @@ MAPS_API_KEY=
 - `.github/workflows/ci.yml` corre lint, typecheck, tests y auditoría con Node 22; `HUSKY=0` evita instalar hooks dentro de CI.
 - Para ejecutar localmente los mismos chequeos base del CI: `pnpm lint && pnpm typecheck && pnpm test && pnpm audit --audit-level=high`.
 - SonarCloud se ejecuta en push a `main` y en pull requests del mismo repositorio; omite PRs desde forks porque GitHub no expone secretos allí. Consume los reportes LCOV de Jest y Vitest. Configura el secreto `SONAR_TOKEN` en GitHub y concede a su cuenta permiso de análisis del proyecto. Con SonarScanner CLI instalado localmente, ejecuta `pnpm test` y luego `sonar-scanner` con `SONAR_TOKEN` disponible en el entorno. Verifica que `sonar.organization` y `sonar.projectKey` correspondan a las keys reales; nunca guardes el token en archivos.
-- Dependabot revisa semanalmente las dependencias npm de los directorios configurados en `.github/dependabot.yml` (raíz, API, config y contracts), GitHub Actions y Docker.
+- Dependabot revisa semanalmente las dependencias npm del workspace pnpm desde la raíz, GitHub Actions y Docker.
 - Dependabot se ejecuta desde GitHub; localmente se pueden inspeccionar versiones con `pnpm outdated -r`.
 - CodeQL analiza TypeScript en pull requests y semanalmente. Con CodeQL CLI instalado, se ejecuta localmente con `codeql database create /tmp/tracop-codeql --language=javascript-typescript --source-root .` y `codeql database analyze /tmp/tracop-codeql javascript-typescript --format=sarif-latest --output=/tmp/tracop-codeql.sarif`.
-- Gitleaks escanea pull requests y requiere `GITLEAKS_LICENSE` como secreto de Actions y de Dependabot en organizaciones. Localmente ejecuta `gitleaks detect --source . --redact`. El hook `pre-commit` ejecuta `gitleaks protect --staged --redact` si Gitleaks está instalado.
+- Si Gitleaks CLI está instalado, localmente ejecuta `gitleaks detect --source . --redact`; el hook `pre-commit` también escanea el contenido staged.
 
 ---
 
