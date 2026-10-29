@@ -2,8 +2,13 @@ node_modules/
 dist/
 coverage/
 .turbo/
+.pnpm-store/
 .env
 .env.*
 !.env.example
 *.log
 .DS_Store
+.idea/
+docker-data/
+postgres-data/
+minio-data/
