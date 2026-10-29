@@ -11,6 +11,9 @@ Monorepo de TRACOP, plataforma móvil de abastecimiento agropecuario. Esta fase 
 ## Desarrollo
 
 ```bash
+cp .env.example .env
+# Set DATABASE_URL, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
+# MINIO_ROOT_USER and MINIO_ROOT_PASSWORD in .env before starting services.
 pnpm install
 docker compose up -d
 pnpm db:migrate

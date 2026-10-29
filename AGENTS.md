@@ -595,8 +595,11 @@ neto productor  = subtotal − commission                      // propuesta por 
 ## 19. Comandos (convención de scripts en la raíz)
 
 ```bash
+cp .env.example .env       # completar credenciales locales antes de levantar servicios
 pnpm install              # dependencias
-pnpm dev                  # api + backoffice (+ docker compose up -d para db/minio)
+docker compose up -d       # PostgreSQL y MinIO; requiere variables configuradas en .env
+pnpm db:migrate            # aplica migraciones usando DATABASE_URL
+pnpm dev                  # api + backoffice
 pnpm dev:mobile           # Expo
 pnpm lint                 # ESLint + límites de módulos
 pnpm typecheck            # tsc en todo el monorepo
@@ -616,7 +619,12 @@ pnpm build                # build de todo
 
 ```
 NODE_ENV=development
-DATABASE_URL=postgres://tracop:tracop@localhost:5432/tracop
+DATABASE_URL=
+POSTGRES_USER=
+POSTGRES_PASSWORD=
+POSTGRES_DB=
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
 JWT_SECRET=
 JWT_REFRESH_SECRET=
 
@@ -681,7 +689,7 @@ MAPS_API_KEY=
 
 - `.github/workflows/ci.yml` corre lint, typecheck, tests y auditoría con Node 22; `HUSKY=0` evita instalar hooks dentro de CI.
 - Para ejecutar localmente los mismos chequeos base del CI: `pnpm lint && pnpm typecheck && pnpm test && pnpm audit --audit-level=high`.
-- SonarCloud se ejecuta en push a `main` y en pull requests; consume los reportes LCOV de Jest y Vitest. Con SonarScanner CLI instalado localmente, ejecuta `pnpm test` y luego `sonar-scanner` con `SONAR_TOKEN` disponible en el entorno. Requiere completar los marcadores `sonar.organization` y `sonar.projectKey`; nunca guardes el token en archivos.
+- SonarCloud se ejecuta en push a `main` y en pull requests del mismo repositorio; omite PRs desde forks porque GitHub no expone secretos allí. Consume los reportes LCOV de Jest y Vitest. Configura el secreto `SONAR_TOKEN` en GitHub y concede a su cuenta permiso de análisis del proyecto. Con SonarScanner CLI instalado localmente, ejecuta `pnpm test` y luego `sonar-scanner` con `SONAR_TOKEN` disponible en el entorno. Verifica que `sonar.organization` y `sonar.projectKey` correspondan a las keys reales; nunca guardes el token en archivos.
 - Dependabot revisa semanalmente las dependencias npm de los directorios configurados en `.github/dependabot.yml` (raíz, API, config y contracts), GitHub Actions y Docker.
 - Dependabot se ejecuta desde GitHub; localmente se pueden inspeccionar versiones con `pnpm outdated -r`.
 - CodeQL analiza TypeScript en pull requests y semanalmente. Con CodeQL CLI instalado, se ejecuta localmente con `codeql database create /tmp/tracop-codeql --language=javascript-typescript --source-root .` y `codeql database analyze /tmp/tracop-codeql javascript-typescript --format=sarif-latest --output=/tmp/tracop-codeql.sarif`.
