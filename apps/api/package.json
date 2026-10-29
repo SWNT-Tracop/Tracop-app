@@ -24,7 +24,7 @@
     "uuid": "^11.0.3"
   },
   "devDependencies": {
-    "@nestjs/testing": "^11.2.8",
+    "@nestjs/testing": "^12.2.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.10",
