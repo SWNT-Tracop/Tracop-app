@@ -681,8 +681,8 @@ MAPS_API_KEY=
 
 - `.github/workflows/ci.yml` corre lint, typecheck, tests y auditoría con Node 22; `HUSKY=0` evita instalar hooks dentro de CI.
 - Para ejecutar localmente los mismos chequeos base del CI: `pnpm lint && pnpm typecheck && pnpm test && pnpm audit --audit-level=high`.
-- SonarCloud se ejecuta en push a `main` y en pull requests; consume los reportes LCOV de Jest y Vitest. Localmente, ejecuta `pnpm test` y luego `sonar-scanner` con `SONAR_TOKEN` disponible en el entorno. Requiere completar los marcadores `sonar.organization` y `sonar.projectKey`; nunca guardes el token en archivos.
-- Dependabot revisa semanalmente dependencias npm de workspaces, GitHub Actions y Docker.
+- SonarCloud se ejecuta en push a `main` y en pull requests; consume los reportes LCOV de Jest y Vitest. Con SonarScanner CLI instalado localmente, ejecuta `pnpm test` y luego `sonar-scanner` con `SONAR_TOKEN` disponible en el entorno. Requiere completar los marcadores `sonar.organization` y `sonar.projectKey`; nunca guardes el token en archivos.
+- Dependabot revisa semanalmente las dependencias npm de los directorios configurados en `.github/dependabot.yml` (raíz, API, config y contracts), GitHub Actions y Docker.
 - Dependabot se ejecuta desde GitHub; localmente se pueden inspeccionar versiones con `pnpm outdated -r`.
 - CodeQL analiza TypeScript en pull requests y semanalmente. Con CodeQL CLI instalado, se ejecuta localmente con `codeql database create /tmp/tracop-codeql --language=javascript-typescript --source-root .` y `codeql database analyze /tmp/tracop-codeql javascript-typescript --format=sarif-latest --output=/tmp/tracop-codeql.sarif`.
 - Gitleaks escanea pull requests; localmente ejecuta `gitleaks detect --source . --redact`. El hook `pre-commit` ejecuta `gitleaks protect --staged --redact` si Gitleaks está instalado.
