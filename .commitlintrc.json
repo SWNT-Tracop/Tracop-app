@@ -1,0 +1,29 @@
+{
+  "extends": ["@commitlint/config-conventional"],
+  "rules": {
+    "scope-enum": [
+      2,
+      "always",
+      [
+        "identity",
+        "catalog",
+        "ordering",
+        "logistics",
+        "payments",
+        "notifications",
+        "messaging",
+        "ai-assistant",
+        "trust",
+        "sync",
+        "backoffice",
+        "api",
+        "mobile",
+        "contracts",
+        "config",
+        "docs",
+        "ci",
+        "deps"
+      ]
+    ]
+  }
+}
