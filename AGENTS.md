@@ -679,10 +679,9 @@ MAPS_API_KEY=
 ### Hooks locales
 
 - `pnpm install` ejecuta `prepare` e instala Husky.
-- `pre-commit` ejecuta lint-staged (ESLint `--fix` y Prettier sobre archivos modificados). Si `gitleaks` está instalado, también escanea el contenido staged.
+- `pre-commit` ejecuta lint-staged (ESLint `--fix` y Prettier sobre archivos modificados).
 - `commit-msg` valida Conventional Commits y los scopes permitidos en `.commitlintrc.json`.
 - `pre-push` ejecuta `pnpm typecheck` y `pnpm test`.
-- Para escanear secretos manualmente: `gitleaks detect --source . --redact`.
 - Para auditar dependencias manualmente: `pnpm audit --audit-level=high` (falla ante vulnerabilidades high o critical).
 
 ### CI y análisis
@@ -693,7 +692,6 @@ MAPS_API_KEY=
 - Dependabot revisa semanalmente las dependencias npm del workspace pnpm desde la raíz, GitHub Actions y Docker.
 - Dependabot se ejecuta desde GitHub; localmente se pueden inspeccionar versiones con `pnpm outdated -r`.
 - CodeQL analiza TypeScript en pull requests y semanalmente. Con CodeQL CLI instalado, se ejecuta localmente con `codeql database create /tmp/tracop-codeql --language=javascript-typescript --source-root .` y `codeql database analyze /tmp/tracop-codeql javascript-typescript --format=sarif-latest --output=/tmp/tracop-codeql.sarif`.
-- Si Gitleaks CLI está instalado, localmente ejecuta `gitleaks detect --source . --redact`; el hook `pre-commit` también escanea el contenido staged.
 
 ---
 
