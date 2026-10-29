@@ -32,6 +32,7 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 **Ingresos del piloto:** comisión por transacción + flete.
 
 ### Dentro del piloto (MVP)
+
 - Registro y perfiles por rol; verificación manual de proveedores.
 - Publicación de lotes (app offline y bot de mensajería) con asistente de IA.
 - Descubrimiento: búsqueda, filtros (categoría, ubicación, precio, disponibilidad) y comparación.
@@ -43,6 +44,7 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 - Reputación básica (calificaciones tras entrega).
 
 ### Fuera del piloto (no implementar sin aprobación explícita)
+
 - Blockchain (ver ADR-003). Sí se implementa un **registro de eventos con hash encadenado**.
 - Pasarela de pagos / escrow automático.
 - Suscripciones, productos destacados, herramientas premium, servicios financieros.
@@ -53,15 +55,15 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 
 ## 3. Actores y roles
 
-| Rol (`role`) | Descripción | Canal principal |
-|---|---|---|
-| `producer` | Campesino/productor. Conectividad escasa, poca experiencia digital. | App offline, bot |
-| `supplier` | Comercio/acopiador/cooperativa con inventario y volumen. | App, bot |
-| `buyer` | Comprador profesional (restaurante, tienda). Busca comparar y repetir pedidos. | App |
-| `carrier` | Transportista. Recogidas y entregas, a menudo sin señal. | App offline |
-| `operator` | Equipo TRACOP: coordina logística, verifica, da soporte. | Backoffice |
-| `finance` | Concilia pagos y liquida. | Backoffice |
-| `admin` | Parámetros, usuarios, auditoría. | Backoffice |
+| Rol (`role`) | Descripción                                                                    | Canal principal  |
+| ------------ | ------------------------------------------------------------------------------ | ---------------- |
+| `producer`   | Campesino/productor. Conectividad escasa, poca experiencia digital.            | App offline, bot |
+| `supplier`   | Comercio/acopiador/cooperativa con inventario y volumen.                       | App, bot         |
+| `buyer`      | Comprador profesional (restaurante, tienda). Busca comparar y repetir pedidos. | App              |
+| `carrier`    | Transportista. Recogidas y entregas, a menudo sin señal.                       | App offline      |
+| `operator`   | Equipo TRACOP: coordina logística, verifica, da soporte.                       | Backoffice       |
+| `finance`    | Concilia pagos y liquida.                                                      | Backoffice       |
+| `admin`      | Parámetros, usuarios, auditoría.                                               | Backoffice       |
 
 **Sistemas externos:** Telegram Bot API (demo), WhatsApp Business Cloud API (futuro), proveedor LLM, servicio de mapas, FCM (push), proveedor SMS, fuente de precios de referencia, almacenamiento de objetos.
 
@@ -69,35 +71,37 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 
 ## 4. Glosario (término de negocio → identificador en código)
 
-| Español | Código |
-|---|---|
-| Lote | `Lot` |
-| Producto / categoría | `Product` / `Category` |
-| Pedido | `Order` |
-| Cotización | `Quote` |
-| Recogida / entrega | `Pickup` / `Delivery` |
-| Viaje / ruta | `Trip` / `Route` |
-| Comisión | `Commission` |
-| Flete | `Freight` |
-| Liquidación | `Settlement` |
-| Asiento contable | `LedgerEntry` |
-| Reputación | `Reputation` |
-| Verificación | `Verification` |
-| Incidencia | `Incident` |
-| Operación de sincronización | `SyncOperation` |
+| Español                     | Código                 |
+| --------------------------- | ---------------------- |
+| Lote                        | `Lot`                  |
+| Producto / categoría        | `Product` / `Category` |
+| Pedido                      | `Order`                |
+| Cotización                  | `Quote`                |
+| Recogida / entrega          | `Pickup` / `Delivery`  |
+| Viaje / ruta                | `Trip` / `Route`       |
+| Comisión                    | `Commission`           |
+| Flete                       | `Freight`              |
+| Liquidación                 | `Settlement`           |
+| Asiento contable            | `LedgerEntry`          |
+| Reputación                  | `Reputation`           |
+| Verificación                | `Verification`         |
+| Incidencia                  | `Incident`             |
+| Operación de sincronización | `SyncOperation`        |
 
 ---
 
 ## 5. Reglas innegociables
 
 ### Arquitectura
+
 1. **Monolito modular con arquitectura hexagonal** (puertos y adaptadores). Ver §8.
 2. **Regla de dependencia:** `domain` no importa nada de `application`, `adapters` ni de frameworks. `application` solo importa `domain` y `ports`. Los `adapters` implementan puertos.
-3. **Un módulo, un dueño de datos.** Cada módulo tiene su propio schema de PostgreSQL. **Prohibido** hacer joins o consultas directas a tablas de otro módulo. Se comunican por **interfaz pública del módulo** o por **eventos de dominio**.
+3. **Un módulo, un dueño de datos.** Solo los módulos con datos propios definidos en §11 tienen schema de PostgreSQL; messaging y ai-assistant no crean schema hasta tener datos propios. **Prohibido** hacer joins o consultas directas a tablas de otro módulo. Se comunican por **interfaz pública del módulo** o por **eventos de dominio**.
 4. **Los puertos se crean solo donde algo realmente va a variar** (mensajería, notificaciones, pagos, IA, precios, almacenamiento). No inventes puertos por costumbre.
 5. **Todo canal de entrada normaliza a `InboundMessage`** antes de llegar a la capa de aplicación. La lógica de negocio nunca sabe si el mensaje vino de Telegram o WhatsApp.
 
 ### Datos
+
 6. **Dinero siempre como entero** en pesos colombianos (`bigint`, sin decimales). Nunca `float`.
 7. **IDs UUID v7 generados en el cliente** para entidades creadas offline.
 8. **Fechas en UTC** (`timestamptz`); se muestran en `America/Bogota`.
@@ -105,16 +109,19 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 10. **Borrado lógico** (`deleted_at`) para entidades de negocio; los asientos contables y eventos son **inmutables**.
 
 ### Offline y sincronización
+
 11. Toda mutación del cliente pasa por la **cola de operaciones (outbox local)** con `opId` idempotente. Nunca se llama al API directamente desde un componente de UI para mutar.
 12. **Los pagos no se ejecutan offline.** Solo se guardan intención y comprobante, y se sincronizan.
 13. La disponibilidad/inventario offline es **provisional**: el servidor confirma o rechaza al sincronizar y el cliente debe manejar ambos casos.
 
 ### IA
+
 14. **La IA nunca ejecuta acciones por sí sola.** Produce un borrador estructurado que el usuario confirma.
 15. Todo texto del usuario enviado a la IA es **no confiable** (riesgo de prompt injection). La salida se valida con esquema (`zod`) antes de usarse.
 16. El proveedor de IA vive detrás de `LLMPort`; el modelo se configura por variable de entorno, nunca hardcodeado.
 
 ### Seguridad
+
 17. Sin secretos en el repo. Sin `console.log` de datos personales.
 18. Toda ruta del API exige autenticación y autorización por rol, salvo las explícitamente públicas.
 19. Los webhooks verifican firma/secreto antes de procesar.
@@ -124,28 +131,28 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 
 ## 6. Stack tecnológico
 
-| Capa | Tecnología |
-|---|---|
-| Lenguaje | TypeScript (strict) en todo el repo |
-| Monorepo | pnpm workspaces + Turborepo |
-| Backend | Node.js 22 LTS + NestJS (módulos) |
-| Base de datos | PostgreSQL 16 (schema por módulo) |
-| ORM / migraciones | Drizzle ORM + drizzle-kit |
-| Jobs / colas | pg-boss (sobre PostgreSQL, sin Redis en el piloto) |
-| Eventos internos | `@nestjs/event-emitter` + tabla `outbox_events` |
-| Validación / contratos | zod (paquete compartido `contracts`) + OpenAPI generado |
-| Móvil | React Native + Expo (expo-router), TypeScript |
-| BD local móvil | expo-sqlite + outbox propio de sincronización |
-| Backoffice | React + Vite + TypeScript, TanStack Query, Tailwind |
-| Bot de mensajería | grammY (Telegram, webhook). WhatsApp Cloud API después |
-| IA | Anthropic API tras `LLMPort`, salida estructurada validada |
-| Almacenamiento de archivos | S3-compatible (Supabase Storage / MinIO en local) |
-| Push / SMS | FCM / proveedor SMS tras `NotificationPort` |
-| Logging | pino (JSON); OpenTelemetry cuando haya despliegue real |
-| Contenedores | Docker + docker-compose para desarrollo |
-| CI | GitHub Actions |
-| Tests | Vitest (dominio, paquetes, backoffice), Jest (API, móvil), Testcontainers, supertest, Maestro (E2E móvil) |
-| Lint / formato | ESLint + Prettier + `eslint-plugin-boundaries` (impone la regla de dependencia) |
+| Capa                       | Tecnología                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Lenguaje                   | TypeScript (strict) en todo el repo                                                                       |
+| Monorepo                   | pnpm workspaces + Turborepo                                                                               |
+| Backend                    | Node.js 22 LTS + NestJS (módulos)                                                                         |
+| Base de datos              | PostgreSQL 16 (schema por módulo)                                                                         |
+| ORM / migraciones          | Drizzle ORM + drizzle-kit                                                                                 |
+| Jobs / colas               | pg-boss (sobre PostgreSQL, sin Redis en el piloto)                                                        |
+| Eventos internos           | `@nestjs/event-emitter` + tabla `outbox_events`                                                           |
+| Validación / contratos     | zod (paquete compartido `contracts`) + OpenAPI generado                                                   |
+| Móvil                      | React Native + Expo (expo-router), TypeScript                                                             |
+| BD local móvil             | expo-sqlite + outbox propio de sincronización                                                             |
+| Backoffice                 | React + Vite + TypeScript, TanStack Query, Tailwind                                                       |
+| Bot de mensajería          | grammY (Telegram, webhook). WhatsApp Cloud API después                                                    |
+| IA                         | Anthropic API tras `LLMPort`, salida estructurada validada                                                |
+| Almacenamiento de archivos | S3-compatible (Supabase Storage / MinIO en local)                                                         |
+| Push / SMS                 | FCM / proveedor SMS tras `NotificationPort`                                                               |
+| Logging                    | pino (JSON); OpenTelemetry cuando haya despliegue real                                                    |
+| Contenedores               | Docker + docker-compose para desarrollo                                                                   |
+| CI                         | GitHub Actions                                                                                            |
+| Tests                      | Vitest (dominio, paquetes, backoffice), Jest (API, móvil), Testcontainers, supertest, Maestro (E2E móvil) |
+| Lint / formato             | ESLint + Prettier + `eslint-plugin-boundaries` (impone la regla de dependencia)                           |
 
 ---
 
@@ -243,29 +250,29 @@ DE SALIDA    ManualTransferAdapter → pasarela · AnthropicLLMAdapter · Drizzl
 
 ### Puertos principales
 
-| Puerto | Responsabilidad | Adaptadores |
-|---|---|---|
-| `MessagingPort` | Enviar/recibir mensajes, botones, audio, fotos, ubicación | `TelegramAdapter` (ahora), `WhatsAppAdapter` (después), `InMemoryMessagingAdapter` (tests) |
-| `NotificationPort` | Entregar una notificación por un canal | `MessagingNotifier`, `FcmAdapter`, `SmsAdapter`, `EmailAdapter` |
-| `PaymentPort` | Registrar/verificar pagos | `ManualTransferAdapter` (piloto), pasarela (futuro) |
-| `LLMPort` | Extraer datos estructurados de texto/audio/foto | `AnthropicLLMAdapter`, `FakeLLMAdapter` (tests) |
-| `PriceReferencePort` | Precios de referencia de mercado | adaptador de fuente de datos, `StaticPriceAdapter` |
-| `StoragePort` | Guardar fotos y comprobantes | `S3StorageAdapter`, `LocalStorageAdapter` |
-| `MapsPort` | Distancias y geocodificación | adaptador de mapas, `FakeMapsAdapter` |
+| Puerto               | Responsabilidad                                           | Adaptadores                                                                                |
+| -------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `MessagingPort`      | Enviar/recibir mensajes, botones, audio, fotos, ubicación | `TelegramAdapter` (ahora), `WhatsAppAdapter` (después), `InMemoryMessagingAdapter` (tests) |
+| `NotificationPort`   | Entregar una notificación por un canal                    | `MessagingNotifier`, `FcmAdapter`, `SmsAdapter`, `EmailAdapter`                            |
+| `PaymentPort`        | Registrar/verificar pagos                                 | `ManualTransferAdapter` (piloto), pasarela (futuro)                                        |
+| `LLMPort`            | Extraer datos estructurados de texto/audio/foto           | `AnthropicLLMAdapter`, `FakeLLMAdapter` (tests)                                            |
+| `PriceReferencePort` | Precios de referencia de mercado                          | adaptador de fuente de datos, `StaticPriceAdapter`                                         |
+| `StoragePort`        | Guardar fotos y comprobantes                              | `S3StorageAdapter`, `LocalStorageAdapter`                                                  |
+| `MapsPort`           | Distancias y geocodificación                              | adaptador de mapas, `FakeMapsAdapter`                                                      |
 
 ### `InboundMessage` (formato normalizado)
 
 ```ts
 type InboundMessage = {
   channel: 'telegram' | 'whatsapp' | 'app';
-  channelUserId: string;          // chat_id o número
-  userId?: string;                // si el canal ya está vinculado
+  channelUserId: string; // chat_id o número
+  userId?: string; // si el canal ya está vinculado
   type: 'text' | 'voice' | 'photo' | 'location' | 'contact' | 'action';
   text?: string;
   mediaRef?: string;
   location?: { lat: number; lng: number };
   action?: { name: string; payload: Record<string, unknown> }; // botones
-  receivedAt: string;             // ISO UTC
+  receivedAt: string; // ISO UTC
 };
 ```
 
@@ -273,19 +280,19 @@ type InboundMessage = {
 
 ## 9. Módulos
 
-| Módulo | Responsabilidad | Publica eventos | Offline |
-|---|---|---|---|
-| `identity` | Registro, perfiles, roles, vinculación de canales, OTP, sesiones | `UserRegistered`, `ChannelLinked` | Parcial |
-| `catalog` | Productos, categorías, lotes, disponibilidad, búsqueda y filtros | `LotPublished`, `LotReserved`, `LotExpired` | Sí |
-| `ordering` | Solicitudes, cotizaciones, pedidos y estados | `OrderRequested`, `OrderQuoted`, `OrderAccepted`, `OrderDelivered`, `OrderCancelled` | Sí (eventos pendientes) |
-| `logistics` | Agrupar lotes, camiones, rutas, check-ins, incidencias de transporte | `TripPlanned`, `PickupConfirmed`, `DeliveryConfirmed` | Sí (check-ins locales) |
-| `payments` | Cotización de costos, comprobantes, verificación, ledger, liquidación | `PaymentProofUploaded`, `PaymentVerified`, `SettlementIssued`, `PaymentDisputed` | No |
-| `notifications` | Plantillas, preferencias, enrutamiento por canal, reintentos, estado de envío | `NotificationSent`, `NotificationFailed` | Bandeja local |
-| `messaging` | Webhooks y adaptadores de canal, normalización a `InboundMessage`, flujos conversacionales | — | No |
-| `ai-assistant` | Extracción de borradores desde texto/audio/foto; sugerencia de precios | `DraftGenerated` | No |
-| `trust` | Calificaciones, reputación, verificación de proveedores | `ProviderVerified`, `RatingSubmitted` | Lectura |
-| `sync` | Recepción idempotente de operaciones, cursores de pull, resolución de conflictos | `SyncBatchApplied` | Núcleo offline |
-| `backoffice` | Casos de uso de operación, métricas, parámetros, audit log | — | No |
+| Módulo          | Responsabilidad                                                                            | Publica eventos                                                                      | Offline                 |
+| --------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ----------------------- |
+| `identity`      | Registro, perfiles, roles, vinculación de canales, OTP, sesiones                           | `UserRegistered`, `ChannelLinked`                                                    | Parcial                 |
+| `catalog`       | Productos, categorías, lotes, disponibilidad, búsqueda y filtros                           | `LotPublished`, `LotReserved`, `LotExpired`                                          | Sí                      |
+| `ordering`      | Solicitudes, cotizaciones, pedidos y estados                                               | `OrderRequested`, `OrderQuoted`, `OrderAccepted`, `OrderDelivered`, `OrderCancelled` | Sí (eventos pendientes) |
+| `logistics`     | Agrupar lotes, camiones, rutas, check-ins, incidencias de transporte                       | `TripPlanned`, `PickupConfirmed`, `DeliveryConfirmed`                                | Sí (check-ins locales)  |
+| `payments`      | Cotización de costos, comprobantes, verificación, ledger, liquidación                      | `PaymentProofUploaded`, `PaymentVerified`, `SettlementIssued`, `PaymentDisputed`     | No                      |
+| `notifications` | Plantillas, preferencias, enrutamiento por canal, reintentos, estado de envío              | `NotificationSent`, `NotificationFailed`                                             | Bandeja local           |
+| `messaging`     | Webhooks y adaptadores de canal, normalización a `InboundMessage`, flujos conversacionales | —                                                                                    | No                      |
+| `ai-assistant`  | Extracción de borradores desde texto/audio/foto; sugerencia de precios                     | `DraftGenerated`                                                                     | No                      |
+| `trust`         | Calificaciones, reputación, verificación de proveedores                                    | `ProviderVerified`, `RatingSubmitted`                                                | Lectura                 |
+| `sync`          | Recepción idempotente de operaciones, cursores de pull, resolución de conflictos           | `SyncBatchApplied`                                                                   | Núcleo offline          |
+| `backoffice`    | Casos de uso de operación, métricas, parámetros, audit log                                 | —                                                                                    | No                      |
 
 **Regla:** si un módulo necesita datos de otro, usa su `index.ts` (consulta pública) o reacciona a su evento. Nunca su tabla.
 
@@ -294,22 +301,23 @@ type InboundMessage = {
 ## 10. Offline-first y sincronización
 
 ### Modelo
+
 - El móvil es un **thick client**: SQLite local es la fuente de lectura de la UI.
 - Toda mutación se escribe primero en la BD local **y** en la tabla `outbox` local, y la UI se actualiza de inmediato (optimista).
-- Un **motor de sync** vacía el outbox cuando hay conexión y luego hace *pull* de cambios del servidor.
+- Un **motor de sync** vacía el outbox cuando hay conexión y luego hace _pull_ de cambios del servidor.
 
 ### Operación de sincronización
 
 ```ts
 type SyncOperation = {
-  opId: string;          // UUID v7, clave de idempotencia
+  opId: string; // UUID v7, clave de idempotencia
   deviceId: string;
-  entity: string;        // 'lot' | 'order' | 'pickup_checkin' | 'payment_proof' ...
+  entity: string; // 'lot' | 'order' | 'pickup_checkin' | 'payment_proof' ...
   entityId: string;
   type: 'create' | 'update' | 'delete' | 'transition';
   payload: Record<string, unknown>;
-  baseVersion?: number;  // versión que el cliente conocía
-  clientTs: string;      // ISO UTC
+  baseVersion?: number; // versión que el cliente conocía
+  clientTs: string; // ISO UTC
 };
 ```
 
@@ -319,15 +327,16 @@ type SyncOperation = {
 
 ### Política de conflictos por tipo de dato
 
-| Dato | Política |
-|---|---|
-| Perfil, preferencias | Última escritura gana (por `server_seq`) |
-| Lote (edición) | Optimistic concurrency con `version`; si difiere, conflicto → la UI muestra la versión del servidor y pide confirmar |
-| Inventario / reserva | **El servidor decide.** La reserva offline es provisional; puede ser rechazada |
-| Pedido y pago | **Solo eventos append-only** (transiciones). Nunca se sobrescribe estado; se valida la transición contra la máquina de estados |
-| Check-ins de logística | Append-only con `clientTs`; el servidor ordena por `server_seq` |
+| Dato                   | Política                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Perfil, preferencias   | Última escritura gana (por `server_seq`)                                                                                       |
+| Lote (edición)         | Optimistic concurrency con `version`; si difiere, conflicto → la UI muestra la versión del servidor y pide confirmar           |
+| Inventario / reserva   | **El servidor decide.** La reserva offline es provisional; puede ser rechazada                                                 |
+| Pedido y pago          | **Solo eventos append-only** (transiciones). Nunca se sobrescribe estado; se valida la transición contra la máquina de estados |
+| Check-ins de logística | Append-only con `clientTs`; el servidor ordena por `server_seq`                                                                |
 
 ### Reglas
+
 - Reintentos con espera exponencial; límite de operaciones por lote (p. ej. 50).
 - Una operación rechazada **no** bloquea las siguientes independientes.
 - Adjuntos (fotos, comprobantes): subida por separado en segundo plano con URL prefirmada; la operación referencia el `mediaRef`.
@@ -342,6 +351,7 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 ### Tablas principales (por schema)
 
 **identity**
+
 - `users` (id, role, full_name, phone, status, locale, created_at…)
 - `channel_links` (id, user_id, channel, channel_user_id, verified_at) — único por (`channel`, `channel_user_id`)
 - `devices` (id, user_id, platform, push_token, last_seen_at)
@@ -350,18 +360,21 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 - `provider_profiles` (user_id, display_name, municipality, department, lat, lng, description)
 
 **catalog**
+
 - `categories` (id, name, parent_id)
 - `products` (id, category_id, name, unit, attributes jsonb)
 - `lots` (id, provider_id, product_id, quantity, unit, unit_price, quality_grade, available_from, available_until, location_lat, location_lng, status, version)
 - `lot_photos` (id, lot_id, media_ref)
 
 **ordering**
+
 - `orders` (id, buyer_id, status, delivery_address, delivery_window, created_at, version)
 - `order_items` (id, order_id, lot_id, provider_id, quantity, unit_price)
 - `quotes` (id, order_id, subtotal, freight, commission, total, valid_until, status)
 - `order_events` (id, order_id, type, payload jsonb, actor_id, occurred_at, prev_hash, hash) — **append-only, hash encadenado**
 
 **logistics**
+
 - `carriers` (user_id, vehicle_type, capacity_kg, plate)
 - `trips` (id, carrier_id, status, planned_at, route jsonb)
 - `trip_stops` (id, trip_id, order_id, kind, sequence, scheduled_at, completed_at)
@@ -369,6 +382,7 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 - `incidents` (id, order_id, trip_id, type, description, status, opened_at, closed_at)
 
 **payments**
+
 - `payments` (id, order_id, method, amount, status, proof_media_ref, verified_by, verified_at)
 - `ledger_entries` (id, transaction_id, account, debit, credit, order_id, created_at) — **inmutable; por transacción suma débitos = créditos**
 - `settlements` (id, beneficiary_id, order_id, amount, status, issued_at, paid_at)
@@ -376,28 +390,34 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 - `freight_rates` (id, corridor, rate_per_kg, min_charge, valid_from, valid_to)
 
 **notifications**
+
 - `templates` (id, event_type, channel, locale, body)
 - `preferences` (user_id, channel_order jsonb, quiet_hours jsonb)
 - `deliveries` (id, user_id, event_id, channel, status, attempts, last_error, sent_at, read_at)
 - `inbox` (id, user_id, title, body, read_at)
 
 **trust**
+
 - `ratings` (id, order_id, rater_id, ratee_id, score, comment)
 - `verifications` (id, provider_id, status, documents jsonb, reviewed_by, reviewed_at)
 - `reputation_snapshots` (provider_id, score, orders_count, on_time_rate, updated_at)
 
 **sync**
+
 - `processed_operations` (op_id pk, device_id, entity, result, server_seq, processed_at)
 - `change_log` (server_seq bigserial, entity, entity_id, op, payload jsonb, occurred_at)
 
 **backoffice**
+
 - `audit_log` (id, actor_id, action, entity, entity_id, before jsonb, after jsonb, at, ip)
 - `parameters` (key, value jsonb, updated_by, updated_at)
 
 **shared**
+
 - `outbox_events` (id, aggregate, type, payload jsonb, created_at, published_at)
 
 ### Reglas de base de datos
+
 - Migraciones **solo hacia adelante** con drizzle-kit; nunca editar una migración ya aplicada.
 - Índices obligatorios: FK, `lots(product_id, status)`, `lots` geoespacial si se usa búsqueda por cercanía, `change_log(server_seq)`.
 - Integridad del ledger: restricción/trigger o prueba que verifique débitos = créditos por `transaction_id`.
@@ -425,6 +445,7 @@ Desde casi cualquier estado previo a `in_transit`: `→ cancelled`. Desde `deliv
 ## 13. Pagos y comisión
 
 ### Cálculo de la cotización
+
 ```
 subtotal   = Σ (unit_price × quantity)
 freight    = max(min_charge, rate_per_kg × peso_total)       // o tarifa fija por corredor en el piloto
@@ -432,9 +453,11 @@ commission = round(subtotal × rate_bps / 10_000)             // tasa parametriz
 total comprador = subtotal + freight
 neto productor  = subtotal − commission                      // propuesta por defecto
 ```
+
 > Quién asume la comisión y su porcentaje son **decisiones abiertas** (§23). Implementa la tasa y el responsable como **parámetros**, no como constantes.
 
 ### Flujo del piloto
+
 1. El comprador acepta la cotización → pago `pending`.
 2. Paga por transferencia/Nequi/contra entrega y sube comprobante → `proof_uploaded`.
 3. `finance`/`operator` verifica en el backoffice → `verified` (se registran asientos).
@@ -443,13 +466,15 @@ neto productor  = subtotal − commission                      // propuesta por 
 6. Una disputa congela la liquidación del pedido.
 
 ### Asientos del ledger (ejemplo de pedido pagado y liquidado)
-| Momento | Débito | Crédito |
-|---|---|---|
-| Pago verificado | `cash_held` (subtotal+flete) | `payable_buyer_funds` |
-| Entrega confirmada | `payable_buyer_funds` | `payable_producer` (neto) · `payable_carrier` (flete) · `revenue_commission` |
-| Liquidación pagada | `payable_producer` / `payable_carrier` | `cash_held` |
+
+| Momento            | Débito                                 | Crédito                                                                      |
+| ------------------ | -------------------------------------- | ---------------------------------------------------------------------------- |
+| Pago verificado    | `cash_held` (subtotal+flete)           | `payable_buyer_funds`                                                        |
+| Entrega confirmada | `payable_buyer_funds`                  | `payable_producer` (neto) · `payable_carrier` (flete) · `revenue_commission` |
+| Liquidación pagada | `payable_producer` / `payable_carrier` | `cash_held`                                                                  |
 
 ### Reglas
+
 - Operaciones de pago **idempotentes** (clave por pedido + tipo).
 - `PaymentPort` es la única puerta a medios de pago; el dominio no conoce Nequi, PSE ni pasarelas.
 - Todo cambio de estado de pago escribe en `audit_log`.
@@ -472,6 +497,7 @@ neto productor  = subtotal − commission                      // propuesta por 
 ## 15. Mensajería y asistente de IA
 
 ### Canal (Telegram primero)
+
 - Webhook de Telegram con **secret token** verificado en cabecera.
 - Vinculación de identidad: botón de compartir contacto o código de vinculación → crea `channel_links`.
 - El bot soporta texto, voz, fotos, ubicación y botones. Todo se normaliza a `InboundMessage`.
@@ -479,16 +505,19 @@ neto productor  = subtotal − commission                      // propuesta por 
 - Todo adaptador debe pasar el **test de contrato de `MessagingPort`** (§17).
 
 ### Flujo de publicación asistida
+
 1. El productor envía mensaje/audio/foto describiendo su lote.
 2. `ai-assistant` extrae: producto, cantidad, unidad, calidad, ubicación, fechas, precio.
 3. Se muestra un **borrador** con los campos y los faltantes marcados.
 4. El productor corrige/confirma → recién entonces se ejecuta `PublishLot`.
 
 ### Sugerencia de precios
+
 - Fase 1: reglas con `PriceReferencePort` + histórico propio de TRACOP. Siempre se presenta como **sugerencia con su fuente**, nunca como valor impuesto.
 - ML queda para después de tener datos suficientes.
 
 ### Reglas de IA
+
 - Prompts versionados en `modules/ai-assistant/prompts/`.
 - Salida validada con zod; si falla, se pide aclaración al usuario (no se reintenta indefinidamente).
 - Registrar costo/latencia por llamada. Sin datos personales innecesarios en los prompts.
@@ -514,21 +543,24 @@ neto productor  = subtotal − commission                      // propuesta por 
 ## 17. Testing
 
 ### Pirámide
-| Nivel | Qué cubre | Herramienta |
-|---|---|---|
-| Unitarias de dominio | Reglas, cálculos (comisión, flete), máquinas de estado. **Sin IO.** | Vitest |
-| Aplicación | Casos de uso con **adaptadores en memoria** (fakes) | Vitest |
-| Contrato de puertos | Que cada adaptador cumpla el mismo comportamiento (`MessagingPort`, `NotificationPort`, `PaymentPort`, `StoragePort`) | Suite compartida ejecutada contra cada adaptador |
-| Integración | Repositorios Drizzle contra PostgreSQL real | Jest + Testcontainers |
-| API / e2e | Endpoints completos con auth y permisos | Jest + supertest |
-| Sync | Escenarios offline: duplicados, conflictos, rechazo, corte a mitad | Pruebas dedicadas del motor de sync (móvil y API) |
-| IA | Extracción de borradores contra casos esperados | Conjunto de evaluación + `FakeLLMAdapter` en CI |
-| Móvil E2E | Flujos críticos (publicar offline → sincronizar; pedido; check-in) | Maestro |
+
+| Nivel                | Qué cubre                                                                                                             | Herramienta                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Unitarias de dominio | Reglas, cálculos (comisión, flete), máquinas de estado. **Sin IO.**                                                   | Vitest                                            |
+| Aplicación           | Casos de uso con **adaptadores en memoria** (fakes)                                                                   | Vitest                                            |
+| Contrato de puertos  | Que cada adaptador cumpla el mismo comportamiento (`MessagingPort`, `NotificationPort`, `PaymentPort`, `StoragePort`) | Suite compartida ejecutada contra cada adaptador  |
+| Integración          | Repositorios Drizzle contra PostgreSQL real                                                                           | Jest + Testcontainers                             |
+| API / e2e            | Endpoints completos con auth y permisos                                                                               | Jest + supertest                                  |
+| Sync                 | Escenarios offline: duplicados, conflictos, rechazo, corte a mitad                                                    | Pruebas dedicadas del motor de sync (móvil y API) |
+| IA                   | Extracción de borradores contra casos esperados                                                                       | Conjunto de evaluación + `FakeLLMAdapter` en CI   |
+| Móvil E2E            | Flujos críticos (publicar offline → sincronizar; pedido; check-in)                                                    | Maestro                                           |
 
 ### Cobertura mínima (CI falla si baja)
+
 - `domain`: **≥ 90 %** · `application`: **≥ 80 %** · global: **≥ 75 %**.
 
 ### Reglas
+
 - Todo bug corregido añade una prueba que lo reproduzca.
 - Los tests de dominio y aplicación **no** tocan red, disco ni reloj real: usar `Clock` inyectable.
 - Tests deterministas: sin dependencia de orden ni de fecha actual.
@@ -542,15 +574,17 @@ neto productor  = subtotal − commission                      // propuesta por 
 ## 18. Convenciones de código y Git
 
 ### Código
+
 - TypeScript `strict`; sin `any` (usar `unknown` + validación).
 - Errores de dominio tipados; los casos de uso devuelven `Result<T, E>` en lugar de lanzar para flujos esperados.
 - Funciones pequeñas y con nombre del negocio (`verifyPayment`, no `processData`).
 - Archivos `kebab-case.ts`; clases `PascalCase`; variables `camelCase`; constantes `UPPER_SNAKE_CASE`.
 - Sin lógica de negocio en controllers, componentes de UI ni adaptadores.
-- Comentarios solo para el *por qué*; el *qué* lo dice el nombre.
+- Comentarios solo para el _por qué_; el _qué_ lo dice el nombre.
 - Strings de UI en `i18n/` (español); nunca texto literal en componentes.
 
 ### Git
+
 - Ramas: `feat/<modulo>-<descripcion>`, `fix/...`, `chore/...`, `docs/...`.
 - Commits: **Conventional Commits** (`feat(payments): add commission calculation`).
 - PR pequeños, un propósito, con descripción y prueba asociada.
@@ -610,6 +644,7 @@ SMS_API_KEY=
 PRICE_REFERENCE_SOURCE=
 MAPS_API_KEY=
 ```
+
 > Nunca commitear `.env`. Solo `.env.example` sin valores.
 
 ---
@@ -626,20 +661,43 @@ MAPS_API_KEY=
 - [ ] Strings de UI en i18n.
 - [ ] Docs/ADR actualizados si cambia una decisión.
 - [ ] `lint`, `typecheck` y `test` en verde.
+- [ ] SonarCloud en verde.
+- [ ] CodeQL en verde.
+
+---
+
+## Calidad y seguridad
+
+### Hooks locales
+
+- `pnpm install` ejecuta `prepare` e instala Husky.
+- `pre-commit` ejecuta lint-staged (ESLint `--fix` y Prettier sobre archivos modificados). Si `gitleaks` está instalado, también escanea el contenido staged.
+- `commit-msg` valida Conventional Commits y los scopes permitidos en `.commitlintrc.json`.
+- `pre-push` ejecuta `pnpm typecheck` y `pnpm test`.
+- Para escanear secretos manualmente: `gitleaks detect --source . --redact`.
+- Para auditar dependencias manualmente: `pnpm audit --audit-level=high` (falla ante vulnerabilidades high o critical).
+
+### CI y análisis
+
+- `.github/workflows/ci.yml` corre lint, typecheck, tests y auditoría con Node 22; `HUSKY=0` evita instalar hooks dentro de CI.
+- SonarCloud se ejecuta en push a `main` y en pull requests; consume los reportes LCOV de Jest y Vitest. Requiere `SONAR_TOKEN` y completar los marcadores `sonar.organization` y `sonar.projectKey`.
+- Dependabot revisa semanalmente dependencias npm de workspaces, GitHub Actions y Docker.
+- CodeQL analiza TypeScript en pull requests y semanalmente.
+- Gitleaks escanea pull requests; el hook local es adicional y solo se activa si la herramienta está instalada.
 
 ---
 
 ## 22. Decisiones de arquitectura vigentes (ADR resumidas)
 
-| ADR | Decisión | Tradeoff aceptado |
-|---|---|---|
-| 001 | Monolito modular hexagonal | Menos escalado independiente; mucho menos complejidad operativa en el piloto |
-| 002 | Cliente grueso offline-first con outbox y sync | Más complejidad de sync y pruebas, a cambio de funcionar sin señal |
-| 003 | **Sin blockchain en el piloto**; eventos con hash encadenado | Sin "inmutabilidad total"; se puede anclar a una cadena después |
-| 004 | **Telegram primero**, WhatsApp después vía el mismo puerto | La demo valida el flujo pero no la adopción real |
-| 005 | LLM en el servidor con confirmación humana obligatoria | Costo y latencia por uso; mitiga alucinaciones |
-| 006 | Pagos con conciliación manual en el piloto | Menos automatización, valida la transacción sin integrar pasarela |
-| 007 | PostgreSQL con schema por módulo + pg-boss | Sin Redis ni broker; suficiente para el piloto |
+| ADR | Decisión                                                     | Tradeoff aceptado                                                            |
+| --- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| 001 | Monolito modular hexagonal                                   | Menos escalado independiente; mucho menos complejidad operativa en el piloto |
+| 002 | Cliente grueso offline-first con outbox y sync               | Más complejidad de sync y pruebas, a cambio de funcionar sin señal           |
+| 003 | **Sin blockchain en el piloto**; eventos con hash encadenado | Sin "inmutabilidad total"; se puede anclar a una cadena después              |
+| 004 | **Telegram primero**, WhatsApp después vía el mismo puerto   | La demo valida el flujo pero no la adopción real                             |
+| 005 | LLM en el servidor con confirmación humana obligatoria       | Costo y latencia por uso; mitiga alucinaciones                               |
+| 006 | Pagos con conciliación manual en el piloto                   | Menos automatización, valida la transacción sin integrar pasarela            |
+| 007 | PostgreSQL con schema por módulo + pg-boss                   | Sin Redis ni broker; suficiente para el piloto                               |
 
 ---
 
