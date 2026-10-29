@@ -693,7 +693,7 @@ MAPS_API_KEY=
 - Dependabot revisa semanalmente las dependencias npm de los directorios configurados en `.github/dependabot.yml` (raíz, API, config y contracts), GitHub Actions y Docker.
 - Dependabot se ejecuta desde GitHub; localmente se pueden inspeccionar versiones con `pnpm outdated -r`.
 - CodeQL analiza TypeScript en pull requests y semanalmente. Con CodeQL CLI instalado, se ejecuta localmente con `codeql database create /tmp/tracop-codeql --language=javascript-typescript --source-root .` y `codeql database analyze /tmp/tracop-codeql javascript-typescript --format=sarif-latest --output=/tmp/tracop-codeql.sarif`.
-- Gitleaks escanea pull requests; localmente ejecuta `gitleaks detect --source . --redact`. El hook `pre-commit` ejecuta `gitleaks protect --staged --redact` si Gitleaks está instalado.
+- Gitleaks escanea pull requests y requiere `GITLEAKS_LICENSE` como secreto de Actions y de Dependabot en organizaciones. Localmente ejecuta `gitleaks detect --source . --redact`. El hook `pre-commit` ejecuta `gitleaks protect --staged --redact` si Gitleaks está instalado.
 
 ---
 

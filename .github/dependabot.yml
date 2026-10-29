@@ -3,54 +3,60 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     labels: [dependencies]
     commit-message: { prefix: 'chore(deps)' }
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      all-updates:
+        patterns: ['*']
+        update-types: [major, minor, patch]
   - package-ecosystem: npm
     directory: /apps/api
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     labels: [dependencies]
     commit-message: { prefix: 'chore(deps)' }
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      all-updates:
+        patterns: ['*']
+        update-types: [major, minor, patch]
   - package-ecosystem: npm
     directory: /packages/config
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     labels: [dependencies]
     commit-message: { prefix: 'chore(deps)' }
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      all-updates:
+        patterns: ['*']
+        update-types: [major, minor, patch]
   - package-ecosystem: npm
     directory: /packages/contracts
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     labels: [dependencies]
     commit-message: { prefix: 'chore(deps)' }
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      all-updates:
+        patterns: ['*']
+        update-types: [major, minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     labels: [dependencies]
     commit-message: { prefix: 'chore(deps)' }
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      all-updates:
+        patterns: ['*']
+        update-types: [major, minor, patch]
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     labels: [dependencies]
     commit-message: { prefix: 'chore(deps)' }
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      all-updates:
+        patterns: ['*']
+        update-types: [major, minor, patch]
