@@ -11,6 +11,18 @@ updates:
         versions: ['>=7.0.0']
       - dependency-name: '@types/node'
         versions: ['>=23.0.0']
+      - dependency-name: '@nestjs/common'
+        versions: ['>=12.0.0']
+      - dependency-name: '@nestjs/core'
+        versions: ['>=12.0.0']
+      - dependency-name: '@nestjs/platform-express'
+        versions: ['>=12.0.0']
+      - dependency-name: '@nestjs/testing'
+        versions: ['>=12.0.0']
+      - dependency-name: jest
+        versions: ['>=30.0.0']
+      - dependency-name: '@types/jest'
+        versions: ['>=30.0.0']
     groups:
       all-updates:
         patterns: ['*']
@@ -21,11 +33,6 @@ updates:
     open-pull-requests-limit: 2
     labels: [dependencies]
     commit-message: { prefix: 'chore(deps)' }
-    ignore:
-      - dependency-name: typescript
-        versions: ['>=7.0.0']
-      - dependency-name: '@types/node'
-        versions: ['>=23.0.0']
     groups:
       all-updates:
         patterns: ['*']
