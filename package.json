@@ -40,5 +40,16 @@
     "*.{json,md,yml,yaml,css,scss}": [
       "prettier --write"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "body-parser": "^1.20.9",
+      "esbuild": "^0.25.0",
+      "file-type": "^21.3.2",
+      "handlebars": "^4.7.10",
+      "multer": "^2.5.0",
+      "qs": "^6.16.1",
+      "vite": "^6.4.4"
+    }
   }
 }
