@@ -597,7 +597,8 @@ neto productor  = subtotal − commission                      // propuesta por 
 ```bash
 cp .env.example .env       # completar credenciales locales antes de levantar servicios
 pnpm install              # dependencias
-docker compose up -d       # PostgreSQL y MinIO; requiere variables configuradas en .env
+docker compose up -d       # PostgreSQL 16; requiere variables configuradas en .env
+docker compose --profile storage up -d minio # MinIO opcional para pruebas de archivos
 pnpm db:migrate            # aplica migraciones usando DATABASE_URL
 pnpm dev                  # api + backoffice
 pnpm dev:mobile           # Expo

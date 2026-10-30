@@ -20,4 +20,4 @@ pnpm db:migrate
 pnpm dev
 ```
 
-La API queda disponible en `http://localhost:3000/health`.
+La API queda disponible en `http://localhost:3000/health`. MinIO es opcional y se inicia con `docker compose --profile storage up -d minio` cuando se requiera probar almacenamiento de objetos.
