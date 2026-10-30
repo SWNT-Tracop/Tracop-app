@@ -1,5 +1,12 @@
 {
   "extends": "../../packages/config/tsconfig.base.json",
-  "compilerOptions": { "module": "NodeNext", "moduleResolution": "NodeNext", "experimentalDecorators": true, "emitDecoratorMetadata": true, "types": ["node", "jest"], "noEmit": true },
-  "include": ["src/**/*.ts", "test/**/*.ts", "drizzle/**/*.ts"]
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "types": ["node", "jest"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "drizzle/**/*.ts"]
 }

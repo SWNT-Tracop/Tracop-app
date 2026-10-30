@@ -1,0 +1,11 @@
+export const USER_REPOSITORY = Symbol('USER_REPOSITORY');
+export const OTP_REPOSITORY = Symbol('OTP_REPOSITORY');
+export const SESSION_REPOSITORY = Symbol('SESSION_REPOSITORY');
+export const DEVICE_REPOSITORY = Symbol('DEVICE_REPOSITORY');
+export const CONSENT_REPOSITORY = Symbol('CONSENT_REPOSITORY');
+export const RATE_LIMITER = Symbol('RATE_LIMITER');
+export const OTP_SENDER = Symbol('OTP_SENDER');
+export const TOKEN_SERVICE = Symbol('TOKEN_SERVICE');
+export const PASSWORDLESS_HASHER = Symbol('PASSWORDLESS_HASHER');
+export const IDENTITY_APPLICATION = Symbol('IDENTITY_APPLICATION');
+export const IDENTITY_HASHER = Symbol('IDENTITY_HASHER');
