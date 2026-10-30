@@ -96,7 +96,7 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 
 1. **Monolito modular con arquitectura hexagonal** (puertos y adaptadores). Ver §8.
 2. **Regla de dependencia:** `domain` no importa nada de `application`, `adapters` ni de frameworks. `application` solo importa `domain` y `ports`. Los `adapters` implementan puertos.
-3. **Un módulo, un dueño de datos.** Solo los módulos con datos propios definidos en §11 tienen schema de PostgreSQL; messaging y ai-assistant no crean schema hasta tener datos propios. **Prohibido** hacer joins o consultas directas a tablas de otro módulo. Se comunican por **interfaz pública del módulo** o por **eventos de dominio**.
+3. **Un módulo, un dueño de datos.** Solo los módulos con datos propios definidos en §11 tienen schema de PostgreSQL; `messaging` y `ai-assistant` no crean schema hasta tener datos propios. **Prohibido** hacer joins o consultas directas a tablas de otro módulo. Se comunican por **interfaz pública del módulo** o por **eventos de dominio**.
 4. **Los puertos se crean solo donde algo realmente va a variar** (mensajería, notificaciones, pagos, IA, precios, almacenamiento). No inventes puertos por costumbre.
 5. **Todo canal de entrada normaliza a `InboundMessage`** antes de llegar a la capa de aplicación. La lógica de negocio nunca sabe si el mensaje vino de Telegram o WhatsApp.
 
@@ -422,6 +422,10 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 - `outbox_events` (id, aggregate, type, payload jsonb, created_at, published_at)
 - `schema_migrations` (id, applied_at) — metadata técnica del runner de migraciones
 
+**messaging (datos técnicos de adaptador, no de negocio)**
+
+- `processed_updates` (update_id bigint pk) — idempotencia de updates de Telegram; no es dato de negocio del módulo.
+
 ### Reglas de base de datos
 
 - Migraciones **solo hacia adelante** con drizzle-kit; nunca editar una migración ya aplicada.
@@ -733,6 +737,8 @@ MAPS_API_KEY=
 | 005 | LLM en el servidor con confirmación humana obligatoria       | Costo y latencia por uso; mitiga alucinaciones                               |
 | 006 | Pagos con conciliación manual en el piloto                   | Menos automatización, valida la transacción sin integrar pasarela            |
 | 007 | PostgreSQL con schema por módulo + pg-boss                   | Sin Redis ni broker; suficiente para el piloto                               |
+| 008 | Autenticación por teléfono + OTP con JWT y refresh rotativo  | `jose@4` fijado por dual CJS/ESM; ventana de gracia de refresh pendiente     |
+| 009 | Mensajería con Telegram (webhook/polling), puerto único      | Polling solo dev; OTP fire-and-forget; rate limit en memoria                 |
 
 ---
 

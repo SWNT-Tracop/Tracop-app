@@ -6,6 +6,66 @@ TRACOP adopta un monolito modular con arquitectura hexagonal: los módulos encap
 
 `src/shared/kernel/` contiene elementos compartidos que son parte del lenguaje del dominio y pueden usarse desde `domain`: `Result`, errores base, la interfaz `Clock` e IDs UUID v7. `src/shared/infra/` contiene implementaciones y detalles de infraestructura —validación de entorno, `SystemClock`, Drizzle/PostgreSQL, `UnitOfWork`, outbox, logging Pino y manejo HTTP— y no puede importarse desde el dominio.
 
+## Messaging (Telegram / WhatsApp)
+
+`messaging` implementa la recepción y envío de mensajes por canal de mensajería. El dominio y la aplicación no conocen Telegram ni WhatsApp; operan sobre `InboundMessage` / `OutboundMessage` definidos en `domain/messaging.ts`.
+
+### Capas
+
+| Capa            | Contenido                                                                                                                                                                                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `domain/`       | `InboundMessage` (texto, voz, foto, ubicación, contacto, acción), `OutboundMessage` (texto + botones), `ChannelUserRef`, `MessagingError`. Sin dependencias externas.                                                                                                                        |
+| `application/`  | `MessagingApplicationService`: `handleUpdate` (idempotente por `updateId`), `handleInboundMessage` (comando `/start` → botón `request_contact`; contacto → vinculación; voz/foto/ubicación → respuesta genérica). Devuelve `UpdateProcessingResult` con réplicas y `securityEvent` opcional. |
+| `ports/`        | `MessagingPort` (`sendText`, `sendButtons`), `ChannelIdentityPort` (`linkChannel`, `findActiveChannelByPhone`), `ProcessedUpdatesRepository`, `MessagingUnitOfWork`, `MessagingApplication`.                                                                                                 |
+| `adapters/in/`  | `TelegramWebhookController` (valida secret token, timeout, entrega async), `TelegramUpdateHandler` (procesa, rate-limit, delega a aplicación, entrega réplicas), `TelegramPollingRunner` (solo dev, `TELEGRAM_MODE=polling`), `normalizeTelegramUpdate` (zod → `InboundMessage`).            |
+| `adapters/out/` | `TelegramAdapter` (grammY, mapea `MessagingError`), `InMemoryMessagingAdapter` (tests), `DrizzleProcessedUpdatesRepository`.                                                                                                                                                                 |
+
+### Puertos
+
+| Puerto                       | Responsabilidad                                              | Adaptadores                                                                       |
+| ---------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `MessagingPort`              | Enviar texto y botones                                       | `TelegramAdapter`, `InMemoryMessagingAdapter` (tests), `WhatsAppAdapter` (futuro) |
+| `ChannelIdentityPort`        | Vincular canal a teléfono y buscar canal activo por teléfono | `IdentityChannelAdapter` (en `bootstrap/`, delega a `IdentityChannelApplication`) |
+| `ProcessedUpdatesRepository` | Idempotencia de updates entrantes (`claim(updateId)`)        | `DrizzleProcessedUpdatesRepository` (tabla `messaging.processed_updates`)         |
+| `MessagingUnitOfWork`        | Transacción compartida con `shared.outbox_events`            | `UnitOfWork` de `shared/infra`                                                    |
+
+### Flujo de webhook
+
+1. `POST /webhooks/telegram` recibe update; valida `x-telegram-bot-api-secret-token` con `timingSafeEqual`.
+2. `TelegramUpdateHandler.process`: valida con `telegramUpdateSchema` (zod), normaliza, rate-limit por remitente y global (claves HMAC), `ProcessedUpdatesRepository.claim(updateId)`, delega a `MessagingApplicationService.handleUpdate`.
+3. Responde **200 OK inmediato**; `TelegramUpdateHandler.deliver(replies)` envía réplicas en background vía `MessagingPort`.
+4. Errores de entrega se loguean (hash de `channelUserId`), no reintentan aquí; la cola de notificaciones maneja reintentos en su capa.
+
+### Polling (solo desarrollo)
+
+`TelegramPollingRunner` arranca si `NODE_ENV=development` y `TELEGRAM_MODE=polling`; borra webhook pendiente y usa `bot.on('message')`. Útil para probar sin túnel público.
+
+### Rate limiting
+
+- **Por remitente**: `TELEGRAM_RATE_LIMIT_PER_SENDER` (por defecto 20) en ventana `TELEGRAM_RATE_LIMIT_WINDOW_SECONDS` (60s).
+- **Global**: `TELEGRAM_RATE_LIMIT_GLOBAL` (por defecto 300) en la misma ventana.
+- Claves HMAC con `RATE_LIMIT_HMAC_SECRET`; contadores en memoria (Redis no requerido en piloto). Exceder → `kind: 'dropped'`, sin réplica.
+
+### Normalización
+
+`normalizeTelegramUpdate` acepta solo `message` de chat `private` con `from`. Descarta `edited_message`, `channel_post`, `my_chat_member`, `callback_query`. Tipos soportados: `text`, `contact`, `voice`, `photo` (último `file_id`), `location`. Otros → `message: null` (ignorado).
+
+### Vinculación de canal
+
+`/start` → botón `request_contact`. Al recibir `contact`:
+
+- Si `contact.user_id !== from.id` → `securityEvent: 'contact_user_mismatch'`, responde aviso de seguridad.
+- Si coincide → `ChannelIdentityPort.linkChannel({channel, channelUserId}, phone)` → `IdentityChannelApplication.linkChannel` (en `identity`).
+- Resultados: `linked`, `already_linked`, `user_not_found`, `invalid_phone`, `conflict` → respuestas localizadas (`i18n.ts`).
+
+### Variables de entorno (ver `.env.example`)
+
+`TELEGRAM_MODE` (`webhook` | `polling`), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_API_ROOT`, `TELEGRAM_WEBHOOK_PROCESS_TIMEOUT_MS`, `TELEGRAM_RATE_LIMIT_PER_SENDER`, `TELEGRAM_RATE_LIMIT_GLOBAL`, `TELEGRAM_RATE_LIMIT_WINDOW_SECONDS`.
+
+### Decisión
+
+Ver [ADR-009](adr/ADR-009.md).
+
 ## Identity y autenticación
 
 `identity` implementa el registro y la autenticación por teléfono + OTP sin que el dominio conozca NestJS, PostgreSQL ni el canal de entrega. Otros módulos solo pueden importar `IdentityModule` desde su `index.ts`; los detalles están en el [README del módulo](../apps/api/src/modules/identity/README.md) y la decisión en [ADR-008](adr/ADR-008.md).
@@ -57,3 +117,47 @@ Los límites de OTP, confianza de proxy, países y vida de tokens se configuran 
 Las pruebas e2e y de repositorio de identity usan PostgreSQL 16 iniciado con Testcontainers; también hay una prueba de redacción de logs que verifica que teléfono, OTP, tokens, `Authorization` e IP no se emiten en claro. Los contadores de rate limit se limpian perezosamente al escribir; la purga periódica con pg-boss queda para una fase posterior. El texto legal del aviso no está incluido; el equipo debe definirlo antes de cambiar `PRIVACY_POLICY_VERSION=v0-draft`.
 
 Cada módulo es dueño de sus datos. La migración inicial creó schemas para `identity`, `catalog`, `ordering`, `logistics`, `payments`, `notifications`, `trust`, `sync`, `backoffice` y `shared`, junto a `shared.outbox_events`. Las migraciones forward-only posteriores agregan las tablas propias de cada módulo al implementar su funcionalidad. `shared.schema_migrations` conserva el estado técnico del runner; no es una tabla de negocio.
+
+## Composición raíz (bootstrap/)
+
+`apps/api/src/bootstrap/` es el único lugar donde se conectan puertos con adaptadores concretos. Ningún módulo conoce los adaptadores de otro; `bootstrap/` importa `index.ts` de cada módulo y wirea:
+
+| Archivo                          | Qué conecta                                                                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule`.                                        |
+| `identity-bridge.module.ts`      | Expone `IdentityChannelApplication` (puerto de aplicación de `identity`) para que `bootstrap/` pueda adaptarlo.                                       |
+| `otp-delivery.module.ts`         | Selecciona `OtpSenderPort` según `OTP_SENDER`: `InMemoryOtpSender` (test), `DevelopmentOtpSender` (consola, dev), `TelegramOtpSender` (producción).   |
+| `telegram-otp-sender.adapter.ts` | Implementa `OtpSenderPort` usando `IdentityChannelApplication.findActiveChannelLinkByPhone` + `MessagingPort.sendText`. Fire-and-forget, sin bloqueo. |
+| `identity-channel.adapter.ts`    | Implementa `ChannelIdentityPort` (de `messaging`) delegando a `IdentityChannelApplication`.                                                           |
+| `http.ts`                        | Configuración global de Nest (prefijo, validación, throttler, CORS, Swagger).                                                                         |
+
+**Regla**: los módulos **no** importan `bootstrap/`. `bootstrap/` importa solo `index.ts` públicos. Los adaptadores en `bootstrap/` son los únicos que cruzan límites de módulo.
+
+## Regla de boundaries (eslint-plugin-boundaries)
+
+`eslint.config.js` en la raíz y `packages/config/eslint.config.js` configuran `eslint-plugin-boundaries` para forzar la regla de dependencia del §5.1–§5.3 (AGENTS.md):
+
+- `domain` no importa de `application`, `adapters`, `bootstrap` ni frameworks.
+- `application` importa solo de `domain` y `ports`.
+- `adapters` importan de `domain`, `ports` y su propio módulo.
+- **Prohibido** importar rutas internas de otro módulo (`modules/identity/application/...`). Solo `modules/identity/index.ts`.
+- `bootstrap/` importa de `modules/*/index.ts` y `shared/*`.
+
+El CI falla si hay violaciones (`pnpm lint`).
+
+## Envío asíncrono de OTP y límites
+
+`TelegramOtpSender` (en `bootstrap/telegram-otp-sender.adapter.ts`) implementa `OtpSenderPort.send(phone, code)`:
+
+1. Busca canal activo: `identity.findActiveChannelLinkByPhone(phone)`.
+2. Si no hay canal vinculado → log `otp_delivery_skipped` (reason: `no_active_channel`) y **retorna sin error**.
+3. Si hay canal → `messaging.sendText({channel, channelUserId}, messagingMessages.otp(code))`.
+4. Si el envío falla → log `otp_delivery_failed` con `failure` y `channel`; **no reintenta**, **no lanza**, **no bloquea** la respuesta HTTP.
+
+**Consecuencias**:
+
+- `/auth/otp/request` responde 200 aunque el usuario no tenga el bot vinculado o Telegram falle.
+- El OTP se genera y persiste en `identity.otp_codes` **antes** de intentar la entrega.
+- No hay reintentos automáticos ni cola de entrega en esta capa; si el usuario vincula el bot después, el OTP ya expiró (vigencia `OTP_TTL_SECONDS`, por defecto 300s). El flujo correcto es: usuario vincula bot → solicita OTP de nuevo.
+- En desarrollo con `OTP_SENDER=console` (por defecto) el código se imprime en terminal con teléfono enmascarado; en tests usa `InMemoryOtpSender`.
+- Producción **requiere** `OTP_SENDER=telegram` y `TELEGRAM_BOT_TOKEN`; la app rechaza el arranque sin configuración real.
