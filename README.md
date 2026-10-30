@@ -12,12 +12,13 @@ Monorepo de TRACOP, plataforma móvil de abastecimiento agropecuario. Esta fase 
 
 ```bash
 cp .env.example .env
-# Set DATABASE_URL, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
-# MINIO_ROOT_USER and MINIO_ROOT_PASSWORD in .env before starting services.
+# Completa DATABASE_URL, PostgreSQL, JWT_SECRET, OTP_HMAC_SECRET y RATE_LIMIT_HMAC_SECRET.
 pnpm install
 docker compose up -d
 pnpm db:migrate
 pnpm dev
 ```
 
-La API queda disponible en `http://localhost:3000/health`. MinIO es opcional y se inicia con `docker compose --profile storage up -d minio` cuando se requiera probar almacenamiento de objetos.
+La API queda disponible en `http://localhost:3000/health`; OpenAPI está en `/docs`. En desarrollo, OTP se imprime en la terminal con el teléfono enmascarado. MinIO es opcional: completa `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD` y ejecuta `docker compose --profile storage up -d minio` solo cuando pruebes almacenamiento de objetos.
+
+Para crear roles internos en desarrollo, ejecuta `pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role operator`. El seed local sintético es `pnpm db:seed` y solo se permite con `NODE_ENV=development`.

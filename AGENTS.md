@@ -181,7 +181,9 @@ tracop/
     │   ├── src/
     │   │   ├── main.ts
     │   │   ├── bootstrap/        # composition root: conecta puertos con adaptadores
-    │   │   ├── shared/           # kernel: Result, errores, Clock, ids, EventBus, outbox
+│   │   ├── shared/
+│   │   │   ├── kernel/       # Result, errores, Clock, ids
+│   │   │   └── infra/        # configuración, BD, outbox, logging, HTTP
     │   │   └── modules/
     │   │       ├── identity/
     │   │       ├── catalog/
@@ -352,12 +354,14 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 
 **identity**
 
-- `users` (id, role, full_name, phone, status, locale, created_at…)
+- `users` (id, role, full_name, phone, status, locale, phone_verified_at, created_at, updated_at, deleted_at)
 - `channel_links` (id, user_id, channel, channel_user_id, verified_at) — único por (`channel`, `channel_user_id`)
-- `devices` (id, user_id, platform, push_token, last_seen_at)
-- `otp_codes` (id, user_id, code_hash, expires_at, consumed_at)
-- `sessions` (id, user_id, refresh_hash, device_id, expires_at)
+- `devices` (id, user_id, platform, push_token, last_seen_at, created_at) — único por dispositivo/usuario
+- `otp_codes` (id, user_id, code_hash, purpose, attempts, max_attempts, expires_at, consumed_at, created_at)
+- `sessions` (id, user_id, refresh_hash, device_id, family_id, expires_at, rotated_at, revoked_at, revoked_reason, last_used_at, created_at)
 - `provider_profiles` (user_id, display_name, municipality, department, lat, lng, description)
+- `consents` (id, user_id, policy_type, version, accepted_at, channel) — append-only, único por (`user_id`, `policy_type`, `version`)
+- `rate_limit_counters` (key_hash, window_start, count) — key HMAC, nunca teléfono/IP en claro
 
 **catalog**
 
@@ -415,6 +419,7 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 **shared**
 
 - `outbox_events` (id, aggregate, type, payload jsonb, created_at, published_at)
+- `schema_migrations` (id, applied_at) — metadata técnica del runner de migraciones
 
 ### Reglas de base de datos
 
@@ -422,6 +427,7 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 - Índices obligatorios: FK, `lots(product_id, status)`, `lots` geoespacial si se usa búsqueda por cercanía, `change_log(server_seq)`.
 - Integridad del ledger: restricción/trigger o prueba que verifique débitos = créditos por `transaction_id`.
 - Datos personales (teléfono, documentos) con acceso restringido; ver §16.
+- Consentimientos inmutables por versión de política; no editar ni borrar filas de `identity.consents`.
 - Seeds de desarrollo en `apps/api/drizzle/seed/` con datos sintéticos, **nunca** datos reales.
 
 ---
@@ -530,6 +536,7 @@ neto productor  = subtotal − commission                      // propuesta por 
 - **Autenticación:** teléfono + OTP entregado por el canal vinculado (o SMS); JWT de corta vida + refresh rotativo por dispositivo.
 - **Autorización:** RBAC por rol + verificación de propiedad del recurso (un productor solo ve/edita lo suyo).
 - **Datos personales:** cumplir la **Ley 1581 de 2012** (protección de datos personales, Colombia): consentimiento explícito, finalidad clara, derecho a consulta y supresión. Cifrar en reposo; minimizar lo que se envía a terceros (incluida la IA).
+- **Consentimiento de privacidad:** cada usuario acepta una versión identificada del aviso; se persiste en `identity.consents` con tipo, versión, fecha y canal. La versión vigente viene de `PRIVACY_POLICY_VERSION`; el texto debe definirse por el equipo y no se inventa en código.
 - **Webhooks:** verificar firma/secret; rechazar replays.
 - **API:** rate limiting, validación de entrada con zod en cada borde, tamaño máximo de cargas, CORS restrictivo.
 - **Archivos:** URLs prefirmadas con expiración; validar tipo y tamaño; sin ejecución de contenido subido.
@@ -610,7 +617,8 @@ pnpm test:e2e             # API e2e
 pnpm test:contract        # contratos de puertos
 pnpm db:generate          # drizzle-kit: generar migración
 pnpm db:migrate           # aplicar migraciones
-pnpm db:seed              # datos sintéticos
+pnpm db:seed              # usuarios sintéticos; solo NODE_ENV=development
+pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role admin # CLI protegido
 pnpm build                # build de todo
 ```
 
@@ -627,7 +635,24 @@ POSTGRES_DB=
 MINIO_ROOT_USER=
 MINIO_ROOT_PASSWORD=
 JWT_SECRET=
-JWT_REFRESH_SECRET=
+OTP_HMAC_SECRET=
+RATE_LIMIT_HMAC_SECRET=
+PRIVACY_POLICY_VERSION=v0-draft
+ALLOWED_COUNTRY_CODES=57
+TRUST_PROXY=false
+OTP_LENGTH=6
+OTP_TTL_SECONDS=300
+OTP_MAX_ATTEMPTS=5
+OTP_PHONE_LIMIT=3
+OTP_PHONE_WINDOW_SECONDS=600
+OTP_PHONE_COOLDOWN_LIMIT=1
+OTP_PHONE_COOLDOWN_SECONDS=60
+OTP_IP_REQUEST_LIMIT=30
+OTP_IP_VERIFY_LIMIT=60
+OTP_IP_WINDOW_SECONDS=600
+ACCESS_TOKEN_TTL_SECONDS=900
+REFRESH_TOKEN_TTL_SECONDS=2592000
+OTP_SENDER=console
 
 # Mensajería
 TELEGRAM_BOT_TOKEN=
@@ -720,6 +745,7 @@ MAPS_API_KEY=
 6. **Fuente de precios de referencia** para la sugerencia de precios.
 7. **Proveedor de SMS y de mapas.**
 8. **Política de verificación** de proveedores (documentos exigidos).
+9. **Texto del aviso de privacidad y su versión inicial.** El valor técnico inicial es `v0-draft`; el equipo debe redactar y aprobar el texto legal.
 
 ---
 

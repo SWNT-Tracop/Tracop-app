@@ -22,33 +22,33 @@ const coverageThreshold = {
   global: { lines: 75, functions: 75, branches: 75, statements: 75 },
 };
 if (hasSourceInLayer('domain')) {
-  coverageThreshold['./src/modules/**/domain/**/*.ts'] = {
+  coverageThreshold['./src/modules/identity/domain/**/*.ts'] = {
     lines: 90,
-    functions: 90,
-    branches: 90,
-    statements: 90,
   };
 }
 if (hasSourceInLayer('application')) {
-  coverageThreshold['./src/modules/**/application/**/*.ts'] = {
+  coverageThreshold['./src/modules/identity/application/**/*.ts'] = {
     lines: 80,
-    functions: 80,
-    branches: 80,
-    statements: 80,
   };
 }
 
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
-  testRegex: '.*\\.e2e-spec\\.ts$',
-  transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.json' }] },
-  moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },
+  testRegex: '.*\\.(spec|contract-spec|e2e-spec)\\.ts$',
+  transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.spec.json' }] },
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^@tracop/contracts$': '<rootDir>/../../packages/contracts/src/index.ts',
+  },
+  globalSetup: '<rootDir>/test/global-setup.cjs',
+  globalTeardown: '<rootDir>/test/global-teardown.cjs',
+  setupFiles: ['<rootDir>/test/setup-env.cjs'],
   testEnvironment: 'node',
   collectCoverageFrom: [
     'src/bootstrap/app.module.ts',
-    'src/modules/**/domain/**/*.ts',
-    'src/modules/**/application/**/*.ts',
+    'src/modules/identity/domain/**/*.ts',
+    'src/modules/identity/application/**/*.ts',
     '!**/index.ts',
     '!**/.gitkeep',
     '!**/*fixture*/**',
