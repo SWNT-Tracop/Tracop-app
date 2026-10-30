@@ -141,6 +141,7 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 | Jobs / colas               | pg-boss (sobre PostgreSQL, sin Redis en el piloto)                                                        |
 | Eventos internos           | `@nestjs/event-emitter` + tabla `outbox_events`                                                           |
 | Validación / contratos     | zod (paquete compartido `contracts`) + OpenAPI generado                                                   |
+| Autenticación / tokens     | `jose` (JWT HS256 firmado en servidor) detrás de `TokenServicePort`; OTP con HMAC-SHA256                  |
 | Móvil                      | React Native + Expo (expo-router), TypeScript                                                             |
 | BD local móvil             | expo-sqlite + outbox propio de sincronización                                                             |
 | Backoffice                 | React + Vite + TypeScript, TanStack Query, Tailwind                                                       |

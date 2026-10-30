@@ -43,7 +43,7 @@ export class IdentityAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const header = request.headers.authorization;
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('Autenticación requerida.');
-    const claims = this.tokens.verifyAccessToken(header.slice(7), this.clock.now());
+    const claims = await this.tokens.verifyAccessToken(header.slice(7), this.clock.now());
     if (!claims) throw new UnauthorizedException('Credenciales inválidas.');
     const session = await this.sessions.findById(claims.sid);
     if (!session || session.userId !== claims.sub || session.deviceId !== claims.did)

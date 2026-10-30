@@ -45,6 +45,9 @@ module.exports = {
   globalTeardown: '<rootDir>/test/global-teardown.cjs',
   setupFiles: ['<rootDir>/test/setup-env.cjs'],
   testEnvironment: 'node',
+  testEnvironmentOptions: {
+    customExportConditions: ['node', 'require', 'default'],
+  },
   collectCoverageFrom: [
     'src/bootstrap/app.module.ts',
     'src/modules/identity/domain/**/*.ts',

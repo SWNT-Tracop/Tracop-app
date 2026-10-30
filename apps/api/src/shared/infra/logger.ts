@@ -12,6 +12,8 @@ export const maskSensitiveFields = (value: unknown): unknown => {
   return Object.fromEntries(
     Object.entries(value).map(([key, fieldValue]) => {
       if (/otp|token|secret|authorization|refresh|password/i.test(key)) return [key, '[REDACTED]'];
+      if (/^(ip|remoteaddress|remote_address|x-forwarded-for|xforwardedfor)$/i.test(key))
+        return [key, '[REDACTED]'];
       if (key === 'phone' && typeof fieldValue === 'string') return [key, maskPhone(fieldValue)];
       return [key, maskSensitiveFields(fieldValue)];
     }),
@@ -42,6 +44,15 @@ export const createLogger = (
           'phone',
           '*.phone',
           'req.body.phone',
+          'ip',
+          '*.ip',
+          'req.ip',
+          'remoteAddress',
+          '*.remoteAddress',
+          'req.socket.remoteAddress',
+          'x-forwarded-for',
+          '*.x-forwarded-for',
+          'req.headers["x-forwarded-for"]',
         ],
         censor: '[REDACTED]',
       },

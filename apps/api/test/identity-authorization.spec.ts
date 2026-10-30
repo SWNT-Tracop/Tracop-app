@@ -49,7 +49,7 @@ describe('identity role guard and ownership helper', () => {
 
   it('rejects an authenticated user whose role is not allowed by @Roles', async () => {
     const tokens = new MemoryTokens();
-    const accessToken = tokens.issueAccessToken(user, session.id, session.deviceId, now);
+    const accessToken = await tokens.issueAccessToken(user, session.id, session.deviceId, now);
     const reflector = {
       getAllAndOverride: (key: string) =>
         key === PUBLIC_ROUTE ? false : key === REQUIRED_ROLES ? ['admin'] : undefined,
@@ -69,7 +69,7 @@ describe('identity role guard and ownership helper', () => {
 
   it('allows an authenticated user with a matching role and checks resource ownership', async () => {
     const tokens = new MemoryTokens();
-    const accessToken = tokens.issueAccessToken(user, session.id, session.deviceId, now);
+    const accessToken = await tokens.issueAccessToken(user, session.id, session.deviceId, now);
     const reflector = {
       getAllAndOverride: (key: string) => (key === REQUIRED_ROLES ? ['buyer'] : false),
     } as unknown as Reflector;

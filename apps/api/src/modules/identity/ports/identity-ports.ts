@@ -70,8 +70,13 @@ export interface AccessTokenClaims {
 }
 
 export interface TokenServicePort {
-  issueAccessToken(user: UserProps, sessionId: string, deviceId: string, now: Date): string;
-  verifyAccessToken(token: string, now: Date): AccessTokenClaims | null;
+  issueAccessToken(
+    user: UserProps,
+    sessionId: string,
+    deviceId: string,
+    now: Date,
+  ): Promise<string>;
+  verifyAccessToken(token: string, now: Date): Promise<AccessTokenClaims | null>;
   createRefreshToken(): string;
 }
 

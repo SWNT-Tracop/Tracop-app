@@ -198,7 +198,12 @@ export class MemoryOutboxWriter implements OutboxWriter {
 export class MemoryTokens implements TokenServicePort {
   private sequence = 0;
   private readonly claims = new Map<string, AccessTokenClaims>();
-  issueAccessToken(user: UserProps, sessionId: string, deviceId: string, now: Date): string {
+  async issueAccessToken(
+    user: UserProps,
+    sessionId: string,
+    deviceId: string,
+    now: Date,
+  ): Promise<string> {
     const token = `access-${++this.sequence}`;
     this.claims.set(token, {
       sub: user.id,
@@ -210,7 +215,7 @@ export class MemoryTokens implements TokenServicePort {
     });
     return token;
   }
-  verifyAccessToken(token: string, now: Date): AccessTokenClaims | null {
+  async verifyAccessToken(token: string, now: Date): Promise<AccessTokenClaims | null> {
     const claims = this.claims.get(token);
     return claims && claims.exp > Math.floor(now.getTime() / 1000) ? claims : null;
   }

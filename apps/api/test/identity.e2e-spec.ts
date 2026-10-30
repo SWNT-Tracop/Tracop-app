@@ -292,16 +292,56 @@ describe('identity authentication flow (PostgreSQL Testcontainers)', () => {
     expect(sessionRows.rows[1]!.revoked_at).toBeNull();
   });
 
-  it('atomically enforces a concurrent database rate limit', async () => {
+  it('allows exactly 3 of 20 concurrent rate-limit consumes for the same key and window', async () => {
     const env = app.get<AppEnvironment>(APP_ENVIRONMENT);
     const poolToken = app.get<pg.Pool>(DATABASE_POOL);
-    const hasher = new HmacPasswordlessHasher(env);
-    const limiter = new PostgresRateLimiter(poolToken, hasher);
+    const limiter = new PostgresRateLimiter(poolToken, new HmacPasswordlessHasher(env));
+    const key = `integration:concurrency:${randomUUID()}`;
     const results = await Promise.all(
-      Array.from({ length: 32 }, () => limiter.consume('integration:concurrency:unique', 5, 600)),
+      Array.from({ length: 20 }, () => limiter.consume(key, 3, 600)),
     );
-    expect(results.filter((result) => result.allowed)).toHaveLength(5);
-    expect(results.filter((result) => !result.allowed)).toHaveLength(27);
+    expect(results.filter((result) => result.allowed)).toHaveLength(3);
+    expect(results.filter((result) => !result.allowed)).toHaveLength(17);
+  });
+
+  it('never increments OTP attempts beyond max_attempts under concurrent verification', async () => {
+    const account = await register();
+    const correctCode = otpSender.sent.at(-1)!.code;
+    const wrongCode = correctCode === '000000' ? '111111' : '000000';
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, () => verify(account.phone, account.deviceId, wrongCode)),
+    );
+    for (const response of responses) expect([401, 429]).toContain(response.status);
+    const otpRow = await pool.query<{ attempts: number; max_attempts: number }>(
+      `SELECT attempts, max_attempts FROM identity.otp_codes
+       WHERE user_id = (SELECT id FROM identity.users WHERE phone = $1)
+       ORDER BY created_at DESC LIMIT 1`,
+      [`+57${account.phone}`],
+    );
+    expect(otpRow.rows[0]!.attempts).toBe(otpRow.rows[0]!.max_attempts);
+    expect(otpRow.rows[0]!.attempts).toBeLessThanOrEqual(5);
+  });
+
+  it('rotates exactly once when two refreshes race with the same token and revokes the family', async () => {
+    const account = await register();
+    const verified = await verify(account.phone, account.deviceId, otpSender.sent.at(-1)!.code);
+    expect(verified.status).toBe(201);
+    const refreshToken = verified.body.refreshToken as string;
+    const send = () =>
+      request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refreshToken, deviceId: account.deviceId });
+    const responses = await Promise.all([send(), send()]);
+    expect(
+      responses.map((response) => response.status).sort((left, right) => left - right),
+    ).toEqual([201, 401]);
+    const familyId = await thisFamilyId(pool, refreshToken);
+    const familyRows = await pool.query<{ revoked_reason: string | null }>(
+      'SELECT revoked_reason FROM identity.sessions WHERE family_id = $1',
+      [familyId],
+    );
+    expect(familyRows.rows.length).toBeGreaterThanOrEqual(2);
+    expect(familyRows.rows.every((row) => row.revoked_reason === 'reuse_detected')).toBe(true);
   });
 });
 

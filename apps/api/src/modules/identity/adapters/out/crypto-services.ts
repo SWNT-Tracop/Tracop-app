@@ -1,5 +1,6 @@
 import { createHmac, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import { SignJWT, jwtVerify } from 'jose';
 import type { AppEnvironment } from '../../../../shared/infra/env.js';
 import { APP_ENVIRONMENT } from '../../../../shared/infra/tokens.js';
 import type { OtpPurpose } from '../../domain/otp.js';
@@ -8,7 +9,8 @@ import type { PasswordlessHasherPort, TokenServicePort } from '../../ports/ident
 import { USER_ROLES, type UserProps } from '../../domain/user.js';
 import type { AccessTokenClaims } from '../../ports/identity-ports.js';
 
-const encode = (value: unknown): string => Buffer.from(JSON.stringify(value)).toString('base64url');
+const ACCESS_TOKEN_ALGORITHM = 'HS256';
+const ALLOWED_ACCESS_TOKEN_ALGORITHMS = [ACCESS_TOKEN_ALGORITHM];
 
 @Injectable()
 export class HmacPasswordlessHasher implements PasswordlessHasherPort {
@@ -37,61 +39,67 @@ export class HmacPasswordlessHasher implements PasswordlessHasherPort {
 
 @Injectable()
 export class HmacTokenService implements TokenServicePort {
-  constructor(@Inject(APP_ENVIRONMENT) private readonly environment: AppEnvironment) {}
+  private readonly secret: Uint8Array;
+  private readonly issuer: string;
+  private readonly audience: string;
+  private readonly clockToleranceSeconds: number;
+  private readonly accessTokenTtlSeconds: number;
 
-  issueAccessToken(user: UserProps, sessionId: string, deviceId: string, now: Date): string {
-    const header = encode({ alg: 'HS256', typ: 'JWT' });
-    const payload = encode({
-      sub: user.id,
-      role: user.role,
-      sid: sessionId,
-      did: deviceId,
-      jti: randomBytes(16).toString('hex'),
-      iat: Math.floor(now.getTime() / 1000),
-      exp: Math.floor(now.getTime() / 1000) + this.environment.ACCESS_TOKEN_TTL_SECONDS,
-    });
-    const unsigned = `${header}.${payload}`;
-    const signature = createHmac('sha256', this.environment.JWT_SECRET)
-      .update(unsigned)
-      .digest('base64url');
-    return `${unsigned}.${signature}`;
+  constructor(@Inject(APP_ENVIRONMENT) private readonly environment: AppEnvironment) {
+    this.secret = new TextEncoder().encode(environment.JWT_SECRET);
+    this.issuer = environment.JWT_ISSUER;
+    this.audience = environment.JWT_AUDIENCE;
+    this.clockToleranceSeconds = environment.JWT_CLOCK_TOLERANCE_SECONDS;
+    this.accessTokenTtlSeconds = environment.ACCESS_TOKEN_TTL_SECONDS;
   }
 
-  verifyAccessToken(token: string, now: Date): AccessTokenClaims | null {
-    const parts = token.split('.');
-    if (parts.length !== 3 || !parts.every(Boolean)) return null;
-    const header = parts[0]!;
-    const payload = parts[1]!;
-    const signature = parts[2]!;
-    const expected = createHmac('sha256', this.environment.JWT_SECRET)
-      .update(`${header}.${payload}`)
-      .digest();
-    let actual: Buffer;
+  async issueAccessToken(
+    user: UserProps,
+    sessionId: string,
+    deviceId: string,
+    now: Date,
+  ): Promise<string> {
+    const issuedAt = Math.floor(now.getTime() / 1000);
+    return new SignJWT({ role: user.role, sid: sessionId, did: deviceId })
+      .setProtectedHeader({ alg: ACCESS_TOKEN_ALGORITHM, typ: 'JWT' })
+      .setSubject(user.id)
+      .setIssuer(this.issuer)
+      .setAudience(this.audience)
+      .setJti(randomBytes(16).toString('hex'))
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(issuedAt + this.accessTokenTtlSeconds)
+      .sign(this.secret);
+  }
+
+  async verifyAccessToken(token: string, now: Date): Promise<AccessTokenClaims | null> {
     try {
-      actual = Buffer.from(signature, 'base64url');
-    } catch {
-      return null;
-    }
-    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-    try {
-      const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString('utf8')) as {
-        alg?: string;
-      };
-      const claims = JSON.parse(
-        Buffer.from(payload, 'base64url').toString('utf8'),
-      ) as AccessTokenClaims;
+      const { payload, protectedHeader } = await jwtVerify(token, this.secret, {
+        algorithms: ALLOWED_ACCESS_TOKEN_ALGORITHMS,
+        issuer: this.issuer,
+        audience: this.audience,
+        clockTolerance: this.clockToleranceSeconds,
+        currentDate: now,
+        requiredClaims: ['sub', 'iat', 'exp', 'iss', 'aud', 'jti'],
+      });
+      if (protectedHeader.alg !== ACCESS_TOKEN_ALGORITHM) return null;
       if (
-        parsedHeader.alg !== 'HS256' ||
-        typeof claims.sub !== 'string' ||
-        typeof claims.sid !== 'string' ||
-        typeof claims.did !== 'string' ||
-        typeof claims.jti !== 'string' ||
-        !USER_ROLES.includes(claims.role) ||
-        typeof claims.exp !== 'number' ||
-        claims.exp <= Math.floor(now.getTime() / 1000)
+        typeof payload.sub !== 'string' ||
+        typeof payload.sid !== 'string' ||
+        typeof payload.did !== 'string' ||
+        typeof payload.jti !== 'string' ||
+        typeof payload.exp !== 'number' ||
+        typeof payload.role !== 'string' ||
+        !USER_ROLES.includes(payload.role as UserProps['role'])
       )
         return null;
-      return claims;
+      return {
+        sub: payload.sub,
+        role: payload.role as UserProps['role'],
+        sid: payload.sid,
+        did: payload.did,
+        jti: payload.jti,
+        exp: payload.exp,
+      };
     } catch {
       return null;
     }

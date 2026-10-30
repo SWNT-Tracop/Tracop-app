@@ -300,7 +300,7 @@ export class IdentityApplicationService {
         const familyId = createId();
         const session = this.newSession(user.id, command.deviceId, familyId, refreshToken, now);
         await this.sessions.create(session);
-        return success(this.authResult(domainUser.props, session, refreshToken, now));
+        return success(await this.authResult(domainUser.props, session, refreshToken, now));
       },
     );
     return result;
@@ -350,7 +350,7 @@ export class IdentityApplicationService {
         now,
       );
       await this.sessions.create(next);
-      return success(this.authResult(user, next, newRefreshToken, now));
+      return success(await this.authResult(user, next, newRefreshToken, now));
     });
   }
 
@@ -418,14 +418,14 @@ export class IdentityApplicationService {
     };
   }
 
-  private authResult(
+  private async authResult(
     user: UserProps,
     session: SessionProps,
     refreshToken: string,
     now: Date,
-  ): AuthSessionResult {
+  ): Promise<AuthSessionResult> {
     return {
-      accessToken: this.tokens.issueAccessToken(user, session.id, session.deviceId, now),
+      accessToken: await this.tokens.issueAccessToken(user, session.id, session.deviceId, now),
       refreshToken,
       accessTokenExpiresIn: this.environment.ACCESS_TOKEN_TTL_SECONDS,
       refreshTokenExpiresAt: session.expiresAt.toISOString(),

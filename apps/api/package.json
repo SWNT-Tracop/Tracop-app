@@ -22,6 +22,7 @@
     "@nestjs/swagger": "^11.2.0",
     "@tracop/contracts": "workspace:*",
     "drizzle-orm": "^0.45.4",
+    "jose": "^4.15.9",
     "pg": "^8.13.1",
     "pino": "^9.6.0",
     "reflect-metadata": "^0.2.2",
