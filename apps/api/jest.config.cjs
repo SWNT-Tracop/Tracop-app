@@ -52,6 +52,7 @@ module.exports = {
     'src/bootstrap/app.module.ts',
     'src/modules/identity/domain/**/*.ts',
     'src/modules/identity/application/**/*.ts',
+    'src/shared/kernel/**/*.ts',
     '!**/index.ts',
     '!**/.gitkeep',
     '!**/*fixture*/**',
