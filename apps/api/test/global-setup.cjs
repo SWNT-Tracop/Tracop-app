@@ -15,6 +15,7 @@ module.exports = async () => {
       '0001_identity.sql',
       '0002_identity_integrity.sql',
       '0003_identity_device_session_uniqueness.sql',
+      '0004_messaging.sql',
     ]) {
       await pool.query(await readFile(resolve('drizzle', filename), 'utf8'));
     }

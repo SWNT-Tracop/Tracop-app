@@ -42,6 +42,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       response.status(status).json({ statusCode: status, message: exception.message });
       return;
     }
+    const parserStatus =
+      typeof exception === 'object' && exception !== null && 'status' in exception
+        ? Number((exception as { status: unknown }).status)
+        : undefined;
+    if (parserStatus && parserStatus >= 400 && parserStatus < 500) {
+      response.status(parserStatus).json({
+        statusCode: parserStatus,
+        message: parserStatus === 413 ? 'Solicitud demasiado grande.' : 'Solicitud inválida.',
+      });
+      return;
+    }
     response
       .status(HttpStatus.INTERNAL_SERVER_ERROR)
       .json({ statusCode: 500, message: 'Error interno.' });

@@ -16,11 +16,24 @@ import type {
   UserRepository,
 } from '../../src/modules/identity/ports/identity-ports.js';
 import type { OutboxEventInput, OutboxWriter } from '../../src/shared/ports/outbox-writer.js';
+import type { BackgroundDispatcher } from '../../src/shared/ports/background-dispatcher.js';
 import type { OtpPurpose, OtpProps } from '../../src/modules/identity/domain/otp.js';
 import type { SessionProps } from '../../src/modules/identity/domain/session.js';
 import type { UserProps } from '../../src/modules/identity/domain/user.js';
 import type { PhoneNumber } from '../../src/modules/identity/domain/phone-number.js';
 import { InMemoryOtpSender } from '../../src/modules/identity/adapters/out/otp-senders.js';
+
+export class MemoryBackgroundDispatcher implements BackgroundDispatcher {
+  private readonly tasks: Promise<void>[] = [];
+
+  dispatch(task: () => Promise<void>): void {
+    this.tasks.push(task());
+  }
+
+  async flush(): Promise<void> {
+    await Promise.allSettled(this.tasks);
+  }
+}
 
 export class FixedClock implements Clock {
   constructor(public time = new Date('2026-01-01T00:00:00.000Z')) {}
@@ -242,6 +255,7 @@ export class MemoryHasher implements PasswordlessHasherPort {
 export const memorySettings: IdentitySettings = {
   NODE_ENV: 'test',
   PRIVACY_POLICY_VERSION: 'v0-draft',
+  TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
   allowedCountryCodes: ['57'],
   OTP_LENGTH: 6,
   OTP_TTL_SECONDS: 300,

@@ -25,6 +25,12 @@ export const registerUserSchema = z
 
 export const requestOtpSchema = z.object({ phone: z.string().min(1).max(32) }).strict();
 
+export const requestOtpResponseSchema = z
+  .object({ message: z.string(), botLink: z.string().url() })
+  .strict();
+
+export type RequestOtpResponse = z.infer<typeof requestOtpResponseSchema>;
+
 export const verifyOtpSchema = z
   .object({
     phone: z.string().min(1).max(32),
