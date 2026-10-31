@@ -121,6 +121,19 @@ pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role operator
 
 El seed local sintético es `pnpm db:seed` y solo se permite con `NODE_ENV=development`.
 
+El mismo seed crea además categorías y productos sintéticos `[DEMO]` del catálogo (actualmente papa, mora y cebolla); es idempotente respecto a esas categorías y productos. No crea lotes. Para expirar lotes publicados cuya disponibilidad terminó, ejecuta `pnpm catalog:expire-lots`; el comando informa cuántos lotes expiró. Debe programarse externamente si se requiere ejecución periódica.
+
+Configuración del catálogo en `.env` (todos los valores tienen defaults):
+
+| Variable | Default | Uso |
+| --- | ---: | --- |
+| `CATALOG_LOT_MAX_HORIZON_DAYS` | `90` | Horizonte máximo de disponibilidad de un lote (límite de configuración: 365 días). |
+| `CATALOG_SEARCH_RADIUS_MAX_KM` | `500` | Radio máximo permitido para búsqueda por ubicación (límite de configuración: 1000 km). |
+| `CATALOG_SEARCH_RATE_LIMIT` | `60` | Búsquedas por usuario autenticado dentro de una ventana. |
+| `CATALOG_SEARCH_RATE_WINDOW_SECONDS` | `60` | Duración de la ventana de rate limit de búsqueda. |
+
+El rate limit de búsqueda se mantiene en memoria por proceso. Ver [arquitectura del catálogo](docs/ARCHITECTURE.md#catálogo) y [ADR-010](docs/adr/ADR-010.md).
+
 ## Mensajería (messaging)
 
 El módulo `messaging` recibe updates de Telegram (webhook o polling), normaliza a `InboundMessage`, aplica rate limiting e idempotencia, y delega a la aplicación.

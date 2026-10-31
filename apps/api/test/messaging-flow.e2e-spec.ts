@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/bootstrap/app.module.js';
+import { describePostgres, resetPostgresFixtures } from './postgres-suite.js';
 import { configureHttp } from '../src/bootstrap/http.js';
 import { TelegramOtpSender } from '../src/bootstrap/telegram-otp-sender.adapter.js';
 import {
@@ -42,7 +43,7 @@ const privateUpdate = (id: number, overrides: Record<string, unknown> = {}) => (
   },
 });
 
-describe('Telegram webhook flow', () => {
+describePostgres('Telegram webhook flow', () => {
   let app: INestApplication;
   let messaging: FakeMessagingAdapter;
   let pool: Pool;
@@ -69,8 +70,9 @@ describe('Telegram webhook flow', () => {
       .compile();
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureHttp(app);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     pool = app.get(DATABASE_POOL) as Pool;
+    await resetPostgresFixtures(pool);
     expect(app.get(OTP_SENDER)).toBeInstanceOf(TelegramOtpSender);
   });
 

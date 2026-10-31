@@ -18,6 +18,7 @@
     "db:seed": "pnpm --filter @tracop/api db:seed",
     "identity:create-staff": "pnpm --filter @tracop/api identity:create-staff",
     "telegram:set-webhook": "pnpm --filter @tracop/api telegram:set-webhook",
+    "catalog:expire-lots": "pnpm --filter @tracop/api catalog:expire-lots",
     "build": "turbo run build",
     "prepare": "husky"
   },

@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/bootstrap/app.module.js';
+import { describePostgres, resetPostgresFixtures } from './postgres-suite.js';
 import { configureHttp } from '../src/bootstrap/http.js';
 import { TelegramOtpSender } from '../src/bootstrap/telegram-otp-sender.adapter.js';
 import {
@@ -15,7 +16,13 @@ import {
   messagingMessages,
   type MessagingPort,
 } from '../src/modules/messaging/index.js';
-import { APP_ENVIRONMENT, APP_LOGGER, BACKGROUND_DISPATCHER } from '../src/shared/infra/tokens.js';
+import {
+  APP_ENVIRONMENT,
+  APP_LOGGER,
+  BACKGROUND_DISPATCHER,
+  DATABASE_POOL,
+} from '../src/shared/infra/tokens.js';
+import pg from 'pg';
 import type { BackgroundDispatcher } from '../src/shared/ports/background-dispatcher.js';
 import { loadAppEnvironment } from '../src/shared/infra/env.js';
 import type pino from 'pino';
@@ -48,8 +55,9 @@ class ControlledTelegramOtpSender extends TelegramOtpSender {
   }
 }
 
-describe('OTP request timing', () => {
+describePostgres('OTP request timing', () => {
   let app: INestApplication;
+  let pool: pg.Pool;
   let messaging: FakeMessagingAdapter;
   let sender: ControlledTelegramOtpSender;
   const linkedPhone = '3012223333';
@@ -83,7 +91,9 @@ describe('OTP request timing', () => {
       .compile();
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureHttp(app);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
+    pool = app.get(DATABASE_POOL) as pg.Pool;
+    await resetPostgresFixtures(pool);
     expect(app.get(OTP_SENDER)).toBeInstanceOf(ControlledTelegramOtpSender);
   });
 

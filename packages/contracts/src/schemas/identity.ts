@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const identityRoleSchema = z.enum([
+export const userRoleSchema = z.enum([
   'producer',
   'supplier',
   'buyer',
@@ -9,13 +9,28 @@ export const identityRoleSchema = z.enum([
   'finance',
   'admin',
 ]);
+export const identityRoleSchema = userRoleSchema;
+export type UserRole = z.infer<typeof userRoleSchema>;
 export const devicePlatformSchema = z.enum(['ios', 'android', 'web', 'other']);
+
+// Kept in sync with the domain rules (FULL_NAME_MIN/MAX_LENGTH); the API edge
+// rejects before reaching the application so OpenAPI documents the bounds.
+const controlCharacters = /[\p{Cc}\p{Cf}]/u;
+const fullNameSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(160)
+  .refine(
+    (value) => !controlCharacters.test(value),
+    'El nombre no puede contener caracteres de control.',
+  );
 
 export const registerUserSchema = z
   .object({
     phone: z.string().min(1).max(32),
     role: identityRoleSchema,
-    fullName: z.string().trim().min(1).max(160),
+    fullName: fullNameSchema,
     locale: z.string().trim().min(2).max(20).optional(),
     deviceId: z.string().uuid(),
     platform: devicePlatformSchema,
@@ -49,8 +64,19 @@ export const refreshSessionSchema = z
 
 export const updateMeSchema = z
   .object({
-    fullName: z.string().trim().min(1).max(160).optional(),
+    fullName: fullNameSchema.optional(),
     locale: z.string().trim().min(2).max(20).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'Incluye fullName o locale.');
+
+export const upsertProviderProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(2).max(100),
+    municipality: z.string().trim().min(1).max(100),
+    department: z.string().trim().min(1).max(100),
+    lat: z.number().finite().min(-90).max(90),
+    lng: z.number().finite().min(-180).max(180),
+    description: z.string().trim().max(1000),
+  })
+  .strict();

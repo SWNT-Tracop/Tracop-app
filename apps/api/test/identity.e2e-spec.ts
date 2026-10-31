@@ -11,8 +11,9 @@ import { PhoneNumber } from '../src/modules/identity/domain/phone-number.js';
 import { OTP_SENDER } from '../src/modules/identity/ports/tokens.js';
 import { InMemoryOtpSender } from '../src/modules/identity/adapters/out/otp-senders.js';
 import type { AppEnvironment } from '../src/shared/infra/env.js';
+import { describePostgres, resetPostgresFixtures } from './postgres-suite.js';
 
-describe('identity authentication flow (PostgreSQL Testcontainers)', () => {
+describePostgres('identity authentication flow (PostgreSQL Testcontainers)', () => {
   let app: INestApplication;
   let pool: pg.Pool;
   let otpSender: InMemoryOtpSender;
@@ -43,9 +44,10 @@ describe('identity authentication flow (PostgreSQL Testcontainers)', () => {
 
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    await resetPostgresFixtures(pool);
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     otpSender = app.get(OTP_SENDER) as InMemoryOtpSender;
   });
 

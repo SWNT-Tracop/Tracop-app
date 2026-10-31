@@ -6,9 +6,15 @@ import { createId } from '../../../shared/kernel/ids.js';
 import { Otp, type OtpProps } from '../domain/otp.js';
 import { PhoneNumber } from '../domain/phone-number.js';
 import { Session, type SessionProps } from '../domain/session.js';
-import { SELF_REGISTERABLE_ROLES, User, type UserProps, type UserRole } from '../domain/user.js';
+import {
+  SELF_REGISTERABLE_ROLES,
+  User,
+  fullNameError,
+  localeError,
+  type UserProps,
+  type UserRole,
+} from '../domain/user.js';
 import type {
-  AccessTokenClaims,
   ConsentRepository,
   DeviceRepository,
   IdentityUnitOfWork,
@@ -30,6 +36,17 @@ export const GENERIC_REGISTER_RESPONSE = 'Si el registro puede continuar, recibi
 export interface RequestOtpResult {
   message: string;
   botLink: string;
+}
+
+// Verified access claims the edge hands to these use cases: profile reads use
+// the subject and logout uses the session.
+export interface AuthenticatedActor {
+  readonly sub: string;
+  readonly role: string;
+  readonly sid: string;
+  readonly did: string;
+  readonly jti: string;
+  readonly exp: number;
 }
 
 export interface RegisterUserCommand {
@@ -106,6 +123,10 @@ export class IdentityApplicationService {
         ),
       );
     }
+    const locale = command.locale ?? 'es-CO';
+    const profileError =
+      fullNameError(command.fullName) ?? localeError(locale, this.environment.supportedLocales);
+    if (profileError) return failure(profileError);
     const phone = phoneResult.value;
     const limitError = await this.consumeOtpRequestLimits(phone, command.ip);
     if (limitError) return success({ message: GENERIC_REGISTER_RESPONSE });
@@ -130,10 +151,11 @@ export class IdentityApplicationService {
           phone,
           role: command.role,
           fullName: command.fullName,
-          locale: command.locale ?? 'es-CO',
+          locale,
           createdAt: now,
         },
         now,
+        { supportedLocales: this.environment.supportedLocales },
       );
       await this.users.create(user.props);
       await this.devices.upsert({
@@ -364,7 +386,7 @@ export class IdentityApplicationService {
     });
   }
 
-  async logout(claims: AccessTokenClaims): Promise<Result<{ message: string }, DomainError>> {
+  async logout(claims: AuthenticatedActor): Promise<Result<{ message: string }, DomainError>> {
     const now = this.clock.now();
     return this.unitOfWork.run(async () => {
       const session = await this.sessions.revokeSession(claims.sid, now, 'logout');
@@ -378,7 +400,7 @@ export class IdentityApplicationService {
     });
   }
 
-  async getMe(claims: AccessTokenClaims): Promise<Result<PublicUser, DomainError>> {
+  async getMe(claims: AuthenticatedActor): Promise<Result<PublicUser, DomainError>> {
     const user = await this.users.findById(claims.sub);
     return user
       ? success(this.publicUser(user))
@@ -386,9 +408,15 @@ export class IdentityApplicationService {
   }
 
   async updateMe(
-    claims: AccessTokenClaims,
+    claims: AuthenticatedActor,
     update: { fullName?: string; locale?: string },
   ): Promise<Result<PublicUser, DomainError>> {
+    const profileError =
+      (update.fullName !== undefined ? fullNameError(update.fullName) : null) ??
+      (update.locale !== undefined
+        ? localeError(update.locale, this.environment.supportedLocales)
+        : null);
+    if (profileError) return failure(profileError);
     const now = this.clock.now();
     return this.unitOfWork.run(async () => {
       const props = await this.users.findById(claims.sub);
@@ -400,6 +428,7 @@ export class IdentityApplicationService {
           ...(update.locale !== undefined ? { locale: update.locale } : {}),
         },
         now,
+        { supportedLocales: this.environment.supportedLocales },
       );
       await this.users.update(user.props);
       return success(this.publicUser(user.props));

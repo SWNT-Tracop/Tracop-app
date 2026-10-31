@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import {
@@ -6,14 +6,18 @@ import {
   registerUserSchema,
   requestOtpSchema,
   updateMeSchema,
+  upsertProviderProfileSchema,
   verifyOtpSchema,
 } from '@tracop/contracts';
 import type { IdentityApplicationService } from '../../application/identity-application-service.js';
 import { IDENTITY_APPLICATION } from '../../ports/tokens.js';
-import { IdentityAuthGuard, type AuthenticatedRequest } from './identity-auth.guard.js';
+import { AuthGuard, type AuthenticatedRequest } from '../../../../shared/auth/index.js';
 import { Public, Roles } from './auth-metadata.js';
 import type { UserRole } from '../../domain/user.js';
 import { DomainError } from '../../../../shared/kernel/domain-error.js';
+import { COLOMBIA_BOUNDS } from '../../../../shared/kernel/geo.js';
+import { PROVIDER_PROFILE_SERVICE } from '../../ports/tokens.js';
+import type { ProviderProfileService } from '../../application/provider-profile-service.js';
 
 const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: DomainError }): T => {
   if (!result.ok) throw result.error;
@@ -25,10 +29,11 @@ const clientIp = (request: Request): string =>
 
 @ApiTags('identity')
 @Controller()
-@UseGuards(IdentityAuthGuard)
+@UseGuards(AuthGuard)
 export class IdentityController {
   constructor(
     @Inject(IDENTITY_APPLICATION) private readonly identity: IdentityApplicationService,
+    @Inject(PROVIDER_PROFILE_SERVICE) private readonly providerProfiles: ProviderProfileService,
   ) {}
 
   @Public()
@@ -44,7 +49,7 @@ export class IdentityController {
           type: 'string',
           enum: ['producer', 'supplier', 'buyer', 'carrier', 'operator', 'finance', 'admin'],
         },
-        fullName: { type: 'string' },
+        fullName: { type: 'string', minLength: 2, maxLength: 160 },
         locale: { type: 'string' },
         deviceId: { type: 'string', format: 'uuid' },
         platform: { type: 'string', enum: ['ios', 'android', 'web', 'other'] },
@@ -174,7 +179,10 @@ export class IdentityController {
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { fullName: { type: 'string' }, locale: { type: 'string' } },
+      properties: {
+        fullName: { type: 'string', minLength: 2, maxLength: 160 },
+        locale: { type: 'string' },
+      },
       additionalProperties: false,
     },
   })
@@ -186,5 +194,29 @@ export class IdentityController {
         ...(input.locale !== undefined ? { locale: input.locale } : {}),
       }),
     );
+  }
+
+  @Put('me/provider-profile')
+  @ApiBearerAuth()
+  @Roles('producer', 'supplier')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['displayName', 'municipality', 'department', 'lat', 'lng', 'description'],
+      properties: {
+        displayName: { type: 'string', minLength: 2, maxLength: 100 },
+        municipality: { type: 'string', minLength: 1, maxLength: 100 },
+        department: { type: 'string', minLength: 1, maxLength: 100 },
+        lat: { type: 'number', minimum: COLOMBIA_BOUNDS.minLat, maximum: COLOMBIA_BOUNDS.maxLat },
+        lng: { type: 'number', minimum: COLOMBIA_BOUNDS.minLng, maximum: COLOMBIA_BOUNDS.maxLng },
+        description: { type: 'string', maxLength: 1000 },
+      },
+      additionalProperties: false,
+    },
+  })
+  async upsertProviderProfile(@Body() body: unknown, @Req() request: AuthenticatedRequest) {
+    const input = upsertProviderProfileSchema.parse(body);
+    await this.providerProfiles.upsertProviderProfile(request.identity!.sub, input);
+    return { status: 'saved' as const };
   }
 }
