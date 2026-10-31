@@ -27,7 +27,7 @@ const lot = (
   id,
   providerId: 'provider-1',
   productId,
-  quantity: 1250, // quantityMilli: 1,250 (numeric(12,3) integer representation)
+  quantityMilli: 1250n,
   unit: 'kg',
   unitPrice,
   qualityGrade: null,
