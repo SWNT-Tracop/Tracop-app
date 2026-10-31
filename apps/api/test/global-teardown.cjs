@@ -7,7 +7,8 @@ module.exports = async () => {
   const statePath = join(tmpdir(), 'tracop-identity-test-container.json');
   try {
     const state = JSON.parse(await readFile(statePath, 'utf8'));
-    spawnSync('docker', ['rm', '-f', state.containerId], { stdio: 'ignore' });
+    if (state.containerId)
+      spawnSync('docker', ['rm', '-f', state.containerId], { stdio: 'ignore' });
   } finally {
     await rm(statePath, { force: true });
   }

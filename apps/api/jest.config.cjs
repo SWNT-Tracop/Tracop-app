@@ -36,7 +36,7 @@ coverageThreshold['./src/modules/messaging/application/**/*.ts'] = { lines: 80 }
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
-  testRegex: '.*\\.(spec|contract-spec|e2e-spec)\\.ts$',
+  testRegex: '.*\\.(spec|contract-spec|e2e-spec|integration-spec)\\.ts$',
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.spec.json' }] },
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',

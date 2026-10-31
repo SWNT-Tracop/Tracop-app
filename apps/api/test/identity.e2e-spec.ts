@@ -11,8 +11,9 @@ import { PhoneNumber } from '../src/modules/identity/domain/phone-number.js';
 import { OTP_SENDER } from '../src/modules/identity/ports/tokens.js';
 import { InMemoryOtpSender } from '../src/modules/identity/adapters/out/otp-senders.js';
 import type { AppEnvironment } from '../src/shared/infra/env.js';
+import { describePostgres } from './postgres-suite.js';
 
-describe('identity authentication flow (PostgreSQL Testcontainers)', () => {
+describePostgres('identity authentication flow (PostgreSQL Testcontainers)', () => {
   let app: INestApplication;
   let pool: pg.Pool;
   let otpSender: InMemoryOtpSender;

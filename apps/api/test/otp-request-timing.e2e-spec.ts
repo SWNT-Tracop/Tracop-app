@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/bootstrap/app.module.js';
+import { describePostgres } from './postgres-suite.js';
 import { configureHttp } from '../src/bootstrap/http.js';
 import { TelegramOtpSender } from '../src/bootstrap/telegram-otp-sender.adapter.js';
 import {
@@ -48,7 +49,7 @@ class ControlledTelegramOtpSender extends TelegramOtpSender {
   }
 }
 
-describe('OTP request timing', () => {
+describePostgres('OTP request timing', () => {
   let app: INestApplication;
   let messaging: FakeMessagingAdapter;
   let sender: ControlledTelegramOtpSender;

@@ -7,7 +7,8 @@ const state = JSON.parse(
 );
 Object.assign(process.env, {
   NODE_ENV: 'test',
-  DATABASE_URL: state.connectionString,
+  ...(state.available ? { DATABASE_URL: state.connectionString } : {}),
+  TRACOP_TESTCONTAINER_AVAILABLE: String(state.available === true),
   JWT_SECRET: 'test-jwt-secret-not-for-real-use-000000000000',
   JWT_ISSUER: 'tracop',
   JWT_AUDIENCE: 'tracop-api',

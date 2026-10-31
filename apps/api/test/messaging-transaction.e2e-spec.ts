@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { Pool } from 'pg';
 import { AppModule } from '../src/bootstrap/app.module.js';
+import { describePostgres } from './postgres-suite.js';
 import { IdentityChannelAdapter } from '../src/bootstrap/identity-channel.adapter.js';
 import {
   IDENTITY_CHANNEL_APPLICATION,
@@ -46,7 +47,7 @@ const contactUpdate = (updateId: number, channelUserId: number, phone: string) =
   },
 });
 
-describe('messaging transaction boundaries', () => {
+describePostgres('messaging transaction boundaries', () => {
   let app: INestApplication;
   let pool: Pool;
   let control: ControllableIdentityAdapter;

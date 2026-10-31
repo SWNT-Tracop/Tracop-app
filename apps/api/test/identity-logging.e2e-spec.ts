@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
 import { AppModule } from '../src/bootstrap/app.module.js';
+import { describePostgres } from './postgres-suite.js';
 import { APP_LOGGER } from '../src/shared/infra/tokens.js';
 import { OTP_SENDER } from '../src/modules/identity/ports/tokens.js';
 import { InMemoryOtpSender } from '../src/modules/identity/adapters/out/otp-senders.js';
@@ -12,7 +13,7 @@ import { NestPinoLogger } from '../src/shared/infra/nest-pino-logger.js';
 
 const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-describe('identity logging redaction across the full flow', () => {
+describePostgres('identity logging redaction across the full flow', () => {
   let app: INestApplication;
   let otpSender: InMemoryOtpSender;
   let loggerOutput = '';
