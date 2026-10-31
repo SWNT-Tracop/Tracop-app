@@ -116,6 +116,22 @@ describe('messaging application', () => {
     expect(result.replies[0]?.text).toBe(messagingMessages.contactSecurity);
   });
 
+  it('confirms the update id for a business failure so a retry is treated as duplicate', async () => {
+    const { service, identity } = setup();
+    const update = message({
+      type: 'contact',
+      contact: { userId: '123456', phoneNumber: '3001234567' },
+    });
+
+    const first = await service.handleUpdate(20n, update);
+    expect(first.kind).toBe('processed');
+    expect(first.securityEvent).toBe('contact_user_mismatch');
+
+    const retry = await service.handleUpdate(20n, update);
+    expect(retry).toEqual({ kind: 'duplicate', replies: [] });
+    expect(identity.linked).toHaveLength(0);
+  });
+
   it('rejects contacts without a Telegram user id', async () => {
     const { service, identity } = setup();
     const result = await service.handleInboundMessage(
