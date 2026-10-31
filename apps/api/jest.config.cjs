@@ -25,12 +25,21 @@ if (hasSourceInLayer('domain')) {
   coverageThreshold['./src/modules/identity/domain/**/*.ts'] = {
     lines: 90,
   };
+  coverageThreshold['./src/modules/catalog/domain/**/*.ts'] = {
+    lines: 90,
+  };
 }
 if (hasSourceInLayer('application')) {
   coverageThreshold['./src/modules/identity/application/**/*.ts'] = {
     lines: 80,
   };
+  coverageThreshold['./src/modules/catalog/application/**/*.ts'] = {
+    lines: 80,
+  };
 }
+coverageThreshold['./src/shared/auth/**/*.ts'] = { lines: 80 };
+coverageThreshold['./src/modules/identity/domain/provider-profile.ts'] = { lines: 90 };
+coverageThreshold['./src/modules/identity/application/provider-profile-service.ts'] = { lines: 80 };
 coverageThreshold['./src/modules/messaging/application/**/*.ts'] = { lines: 80 };
 
 module.exports = {
@@ -53,9 +62,13 @@ module.exports = {
     'src/bootstrap/app.module.ts',
     'src/modules/identity/domain/**/*.ts',
     'src/modules/identity/application/**/*.ts',
+    'src/modules/catalog/domain/**/*.ts',
+    'src/modules/catalog/application/**/*.ts',
     'src/modules/messaging/application/**/*.ts',
+    'src/shared/auth/**/*.ts',
     'src/shared/kernel/**/*.ts',
     '!**/index.ts',
+    '!**/*.spec.ts',
     '!**/.gitkeep',
     '!**/*fixture*/**',
   ],

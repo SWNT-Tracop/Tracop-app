@@ -13,4 +13,16 @@ describe('Category tree rules', () => {
     expect(() => Category.assertNoCycle('root', ['root', 'child'])).toThrow('ciclo');
     expect(() => Category.assertNoCycle('new', ['a', 'b', 'c'])).toThrow('profundidad');
   });
+
+  it('rejects blank/oversized names and self-parenting', () => {
+    expect(() => Category.create({ id: 'c1', name: ' ', parentId: null, depth: 1 })).toThrow(
+      'Nombre',
+    );
+    expect(() =>
+      Category.create({ id: 'c1', name: 'x'.repeat(101), parentId: null, depth: 1 }),
+    ).toThrow('Nombre');
+    expect(() => Category.create({ id: 'c1', name: 'Ciclo', parentId: 'c1', depth: 1 })).toThrow(
+      'propia padre',
+    );
+  });
 });
