@@ -2,9 +2,11 @@ const { PostgreSqlContainer } = require('@testcontainers/postgresql');
 const { readFile, writeFile } = require('node:fs/promises');
 const { join, resolve } = require('node:path');
 const { tmpdir } = require('node:os');
+const { createHash } = require('node:crypto');
 const { Pool } = require('pg');
 
-const statePath = join(tmpdir(), 'tracop-identity-test-container.json');
+const worktreeId = createHash('sha256').update(resolve(__dirname, '..')).digest('hex').slice(0, 12);
+const statePath = join(tmpdir(), `tracop-${worktreeId}-test-container.json`);
 
 module.exports = async () => {
   let container;

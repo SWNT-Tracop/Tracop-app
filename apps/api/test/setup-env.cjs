@@ -1,9 +1,11 @@
 const { readFileSync } = require('node:fs');
-const { join } = require('node:path');
+const { join, resolve } = require('node:path');
 const { tmpdir } = require('node:os');
+const { createHash } = require('node:crypto');
 
+const worktreeId = createHash('sha256').update(resolve(__dirname, '..')).digest('hex').slice(0, 12);
 const state = JSON.parse(
-  readFileSync(join(tmpdir(), 'tracop-identity-test-container.json'), 'utf8'),
+  readFileSync(join(tmpdir(), `tracop-${worktreeId}-test-container.json`), 'utf8'),
 );
 Object.assign(process.env, {
   NODE_ENV: 'test',
