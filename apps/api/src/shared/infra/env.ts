@@ -43,6 +43,10 @@ const envSchema = z.object({
   TELEGRAM_RATE_LIMIT_PER_SENDER: z.coerce.number().int().positive().default(20),
   TELEGRAM_RATE_LIMIT_GLOBAL: z.coerce.number().int().positive().default(300),
   TELEGRAM_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  CATALOG_LOT_MAX_HORIZON_DAYS: z.coerce.number().int().positive().max(365).default(90),
+  CATALOG_SEARCH_RADIUS_MAX_KM: z.coerce.number().positive().max(1000).default(500),
+  CATALOG_SEARCH_RATE_LIMIT: z.coerce.number().int().positive().default(60),
+  CATALOG_SEARCH_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
 });
 
 const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {

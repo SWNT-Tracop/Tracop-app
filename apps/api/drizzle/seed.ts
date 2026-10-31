@@ -78,6 +78,43 @@ try {
       }
     }
   }
+  const syntheticCategories = [
+    { name: '[DEMO] Raíces y tubérculos', product: '[DEMO] Papa' },
+    { name: '[DEMO] Frutas', product: '[DEMO] Mora' },
+    { name: '[DEMO] Hortalizas', product: '[DEMO] Cebolla' },
+  ];
+  for (const item of syntheticCategories) {
+    const found = await pool.query<{ id: string }>(
+      `SELECT id FROM catalog.categories WHERE parent_id IS NULL AND lower(name) = lower($1) AND deleted_at IS NULL LIMIT 1`,
+      [item.name],
+    );
+    const categoryId = found.rows[0]?.id ?? createId();
+    if (!found.rowCount)
+      await pool.query(
+        `INSERT INTO catalog.categories (id, name, parent_id, depth, created_at, updated_at) VALUES ($1, $2, NULL, 1, $3, $3)`,
+        [categoryId, item.name, now],
+      );
+    const productFound = await pool.query(
+      `SELECT id FROM catalog.products WHERE category_id = $1 AND lower(name) = lower($2) AND deleted_at IS NULL LIMIT 1`,
+      [categoryId, item.product],
+    );
+    if (!productFound.rowCount) {
+      await pool.query(
+        `INSERT INTO catalog.products (id, category_id, name, search_text, unit, attributes, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'kg', '{"synthetic":true}'::jsonb, $5, $5)`,
+        [
+          createId(),
+          categoryId,
+          item.product,
+          item.product
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, ''),
+          now,
+        ],
+      );
+    }
+  }
   process.stdout.write('Synthetic identity users seeded.\n');
 } finally {
   await pool.end();

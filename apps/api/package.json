@@ -14,7 +14,8 @@
     "db:migrate": "tsx drizzle/migrate.ts",
     "db:seed": "tsx drizzle/seed.ts",
     "identity:create-staff": "tsx scripts/create-staff.ts",
-    "telegram:set-webhook": "tsx scripts/set-telegram-webhook.ts"
+    "telegram:set-webhook": "tsx scripts/set-telegram-webhook.ts",
+    "catalog:expire-lots": "tsx scripts/expire-lots.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.8",
