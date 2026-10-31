@@ -234,6 +234,19 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     ).rejects.toMatchObject({ code: '23514' });
     await expect(
       pool.query(
+        `INSERT INTO catalog.categories (id, name, parent_id, depth, created_at, updated_at)
+       VALUES ($1, 'Self', $1, 1, $2, $2)`,
+        [createId(), now],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
+        `INSERT INTO catalog.categories (id, name, depth, created_at, updated_at) VALUES ($1, '   ', 1, $2, $2)`,
+        [createId(), now],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
         `INSERT INTO catalog.categories (id, name, depth, created_at, updated_at) VALUES ($1, 'Frutas', 1, $2, $2)`,
         [createId(), now],
       ),
@@ -247,12 +260,153 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     ).rejects.toMatchObject({ code: '23514' });
     await expect(
       pool.query(
-        `INSERT INTO catalog.lots (id, provider_id, product_id, quantity, unit, unit_price, available_from, available_until,
-       location_lat, location_lng, status, version, created_at, updated_at)
-       VALUES ($1, $2, $3, 0, 'kg', 1000, $4, $4, 5.5, -73.4, 'published', 1, $4, $4)`,
-        [createId(), producer.sub, productId, now],
+        `INSERT INTO catalog.products (id, category_id, name, search_text, unit, attributes, created_at, updated_at)
+       VALUES ($1, $2, 'JSON inválido', 'json invalido', 'kg', '[]'::jsonb, $3, $3)`,
+        [createId(), rootCategoryId, now],
       ),
     ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      pool.query(
+        `INSERT INTO catalog.products (id, category_id, name, search_text, unit, created_at, updated_at)
+       VALUES ($1, $2, 'Papa criolla', 'papa criolla', 'kg', $3, $3)`,
+        [createId(), rootCategoryId, now],
+      ),
+    ).rejects.toMatchObject({ code: '23505' });
+    const invalidLots = [
+      {
+        quantity: 0,
+        unit: 'kg',
+        price: 1000,
+        quality: null,
+        from: now,
+        until: now,
+        lat: 5.5,
+        lng: -73.4,
+        status: 'draft',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'kg',
+        price: 0,
+        quality: null,
+        from: now,
+        until: now,
+        lat: 5.5,
+        lng: -73.4,
+        status: 'draft',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'litros',
+        price: 1000,
+        quality: null,
+        from: now,
+        until: now,
+        lat: 5.5,
+        lng: -73.4,
+        status: 'draft',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'kg',
+        price: 1000,
+        quality: 'x'.repeat(101),
+        from: now,
+        until: now,
+        lat: 5.5,
+        lng: -73.4,
+        status: 'draft',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'kg',
+        price: 1000,
+        quality: null,
+        from: new Date(now.getTime() + 1),
+        until: now,
+        lat: 5.5,
+        lng: -73.4,
+        status: 'draft',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'kg',
+        price: 1000,
+        quality: null,
+        from: now,
+        until: now,
+        lat: 14,
+        lng: -73.4,
+        status: 'draft',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'kg',
+        price: 1000,
+        quality: null,
+        from: now,
+        until: now,
+        lat: 5.5,
+        lng: -60,
+        status: 'draft',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'kg',
+        price: 1000,
+        quality: null,
+        from: now,
+        until: now,
+        lat: 5.5,
+        lng: -73.4,
+        status: 'invalid',
+        version: 1,
+      },
+      {
+        quantity: 1,
+        unit: 'kg',
+        price: 1000,
+        quality: null,
+        from: now,
+        until: now,
+        lat: 5.5,
+        lng: -73.4,
+        status: 'draft',
+        version: 0,
+      },
+    ];
+    for (const invalid of invalidLots) {
+      await expect(
+        pool.query(
+          `INSERT INTO catalog.lots (id, provider_id, product_id, quantity, unit, unit_price, quality_grade,
+         available_from, available_until, location_lat, location_lng, status, version, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)`,
+          [
+            createId(),
+            producer.sub,
+            productId,
+            invalid.quantity,
+            invalid.unit,
+            invalid.price,
+            invalid.quality,
+            invalid.from,
+            invalid.until,
+            invalid.lat,
+            invalid.lng,
+            invalid.status,
+            invalid.version,
+            now,
+          ],
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+    }
   });
 
   it('deduplicates concurrent same-id creation, CAS-updates one of two edits, and writes one publish event', async () => {
