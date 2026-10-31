@@ -18,4 +18,9 @@ Object.assign(process.env, {
   ALLOWED_COUNTRY_CODES: '57',
   TRUST_PROXY: 'false',
   OTP_SENDER: 'console',
+  TELEGRAM_MODE: 'webhook',
+  TELEGRAM_BOT_TOKEN: '123456789:test-token-not-for-real-use',
+  TELEGRAM_WEBHOOK_SECRET: 'test_webhook_secret',
+  TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
+  TELEGRAM_API_ROOT: 'https://api.telegram.org',
 });

@@ -17,6 +17,7 @@
     "db:migrate": "pnpm --filter @tracop/api db:migrate",
     "db:seed": "pnpm --filter @tracop/api db:seed",
     "identity:create-staff": "pnpm --filter @tracop/api identity:create-staff",
+    "telegram:set-webhook": "pnpm --filter @tracop/api telegram:set-webhook",
     "build": "turbo run build",
     "prepare": "husky"
   },

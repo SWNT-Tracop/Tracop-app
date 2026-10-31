@@ -31,6 +31,7 @@ if (hasSourceInLayer('application')) {
     lines: 80,
   };
 }
+coverageThreshold['./src/modules/messaging/application/**/*.ts'] = { lines: 80 };
 
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
@@ -52,6 +53,7 @@ module.exports = {
     'src/bootstrap/app.module.ts',
     'src/modules/identity/domain/**/*.ts',
     'src/modules/identity/application/**/*.ts',
+    'src/modules/messaging/application/**/*.ts',
     'src/shared/kernel/**/*.ts',
     '!**/index.ts',
     '!**/.gitkeep',

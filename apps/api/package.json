@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate --custom --name=initial-schemas",
     "db:migrate": "tsx drizzle/migrate.ts",
     "db:seed": "tsx drizzle/seed.ts",
-    "identity:create-staff": "tsx scripts/create-staff.ts"
+    "identity:create-staff": "tsx scripts/create-staff.ts",
+    "telegram:set-webhook": "tsx scripts/set-telegram-webhook.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.8",
@@ -22,6 +23,7 @@
     "@nestjs/swagger": "^11.2.0",
     "@tracop/contracts": "workspace:*",
     "drizzle-orm": "^0.45.4",
+    "grammy": "^1.46.0",
     "jose": "^4.15.9",
     "pg": "^8.13.1",
     "pino": "^9.6.0",

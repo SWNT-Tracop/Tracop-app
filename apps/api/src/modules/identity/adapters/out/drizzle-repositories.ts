@@ -1,12 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../../../shared/infra/database.js';
 import { APP_ENVIRONMENT, DATABASE_POOL } from '../../../../shared/infra/tokens.js';
 import { PhoneNumber } from '../../domain/phone-number.js';
 import type { OtpPurpose, OtpProps } from '../../domain/otp.js';
 import type { SessionProps } from '../../domain/session.js';
 import type { UserProps } from '../../domain/user.js';
+import type { ChannelLinkProps, IdentityChannel } from '../../domain/channel-link.js';
 import type {
+  ChannelLinkRepository,
   ConsentRepository,
   DeviceRepository,
   OtpRepository,
@@ -15,7 +17,7 @@ import type {
 } from '../../ports/identity-ports.js';
 import type { RateLimitResult, RateLimiterPort } from '../../ports/identity-ports.js';
 import { IDENTITY_HASHER } from '../../ports/tokens.js';
-import { consents, devices, otpCodes, sessions, users } from './drizzle-schema.js';
+import { channelLinks, consents, devices, otpCodes, sessions, users } from './drizzle-schema.js';
 import type { Pool } from 'pg';
 
 const mapUser = (
@@ -62,6 +64,55 @@ const mapSession = (row: typeof sessions.$inferSelect): SessionProps => ({
   revokedReason: row.revokedReason,
   lastUsedAt: row.lastUsedAt,
 });
+
+const mapChannelLink = (row: typeof channelLinks.$inferSelect): ChannelLinkProps => ({
+  id: row.id,
+  userId: row.userId,
+  channel: row.channel as IdentityChannel,
+  channelUserId: row.channelUserId,
+  verifiedAt: row.verifiedAt,
+  createdAt: row.createdAt,
+});
+
+@Injectable()
+export class DrizzleChannelLinkRepository implements ChannelLinkRepository {
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+
+  async findByChannelUser(
+    channel: IdentityChannel,
+    channelUserId: string,
+  ): Promise<ChannelLinkProps | null> {
+    const [row] = await this.database
+      .current()
+      .select()
+      .from(channelLinks)
+      .where(and(eq(channelLinks.channel, channel), eq(channelLinks.channelUserId, channelUserId)))
+      .limit(1);
+    return row ? mapChannelLink(row) : null;
+  }
+
+  async findVerifiedByPhone(phone: PhoneNumber): Promise<ChannelLinkProps | null> {
+    const [row] = await this.database
+      .current()
+      .select({ link: channelLinks })
+      .from(channelLinks)
+      .innerJoin(users, eq(users.id, channelLinks.userId))
+      .where(
+        and(
+          eq(users.phone, phone.value),
+          isNull(users.deletedAt),
+          sql`${channelLinks.verifiedAt} IS NOT NULL`,
+        ),
+      )
+      .orderBy(desc(channelLinks.verifiedAt))
+      .limit(1);
+    return row ? mapChannelLink(row.link) : null;
+  }
+
+  async create(link: ChannelLinkProps): Promise<void> {
+    await this.database.current().insert(channelLinks).values(link);
+  }
+}
 
 @Injectable()
 export class DrizzleUserRepository implements UserRepository {

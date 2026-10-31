@@ -1,3 +1,6 @@
+import type { Result } from '../../../shared/kernel/result.js';
+import type { DomainError } from '../../../shared/kernel/domain-error.js';
+import type { ChannelLinkProps, IdentityChannel } from '../domain/channel-link.js';
 import type { OtpPurpose, OtpProps } from '../domain/otp.js';
 import type { SessionProps } from '../domain/session.js';
 import type { PhoneNumber } from '../domain/phone-number.js';
@@ -60,6 +63,39 @@ export interface OtpSenderPort {
   send(phone: PhoneNumber, code: string): Promise<void>;
 }
 
+export interface ChannelLinkRepository {
+  findByChannelUser(
+    channel: IdentityChannel,
+    channelUserId: string,
+  ): Promise<ChannelLinkProps | null>;
+  findVerifiedByPhone(phone: PhoneNumber): Promise<ChannelLinkProps | null>;
+  create(link: ChannelLinkProps): Promise<void>;
+}
+
+export interface IdentityChannelLink {
+  userId: string;
+  channel: IdentityChannel;
+  channelUserId: string;
+}
+
+export interface LinkChannelResult {
+  status: 'linked' | 'already_linked';
+  userId: string;
+}
+
+export interface IdentityChannelApplication {
+  findActiveLinkByChannelUser(
+    channel: IdentityChannel,
+    channelUserId: string,
+  ): Promise<IdentityChannelLink | null>;
+  findActiveChannelLinkByPhone(phone: string): Promise<IdentityChannelLink | null>;
+  linkChannel(command: {
+    channel: IdentityChannel;
+    channelUserId: string;
+    phone: string;
+  }): Promise<Result<LinkChannelResult, DomainError>>;
+}
+
 export interface AccessTokenClaims {
   sub: string;
   role: UserProps['role'];
@@ -94,6 +130,7 @@ export interface IdentityUnitOfWork {
 export interface IdentitySettings {
   NODE_ENV: 'development' | 'test' | 'production';
   PRIVACY_POLICY_VERSION: string;
+  TELEGRAM_BOT_USERNAME: string;
   allowedCountryCodes: readonly string[];
   OTP_LENGTH: number;
   OTP_TTL_SECONDS: number;

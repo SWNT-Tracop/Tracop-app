@@ -21,10 +21,16 @@ import type {
   UserRepository,
 } from '../ports/identity-ports.js';
 import type { OutboxWriter } from '../../../shared/ports/outbox-writer.js';
+import type { BackgroundDispatcher } from '../../../shared/ports/background-dispatcher.js';
 import type { IdentitySettings } from '../ports/identity-ports.js';
 
 export const GENERIC_OTP_RESPONSE = 'Si el número puede autenticarse, recibirás un código.';
 export const GENERIC_REGISTER_RESPONSE = 'Si el registro puede continuar, recibirás un código.';
+
+export interface RequestOtpResult {
+  message: string;
+  botLink: string;
+}
 
 export interface RegisterUserCommand {
   phone: string;
@@ -77,6 +83,7 @@ export class IdentityApplicationService {
     private readonly clock: Clock,
     private readonly unitOfWork: IdentityUnitOfWork,
     private readonly outbox: OutboxWriter,
+    private readonly background: BackgroundDispatcher,
   ) {}
 
   async registerUser(
@@ -156,15 +163,18 @@ export class IdentityApplicationService {
     return success({ message: GENERIC_REGISTER_RESPONSE });
   }
 
-  async requestOtp(
-    phoneInput: string,
-    ip: string,
-  ): Promise<Result<{ message: string }, DomainError>> {
+  async requestOtp(phoneInput: string, ip: string): Promise<Result<RequestOtpResult, DomainError>> {
     const phone = PhoneNumber.parse(phoneInput, this.environment.allowedCountryCodes);
     if (!phone.ok) return phone;
     const limitError = await this.consumeOtpRequestLimits(phone.value, ip);
     if (limitError) return failure(limitError);
-    return this.requestOtpInternal(phone.value, undefined);
+    const result = await this.requestOtpInternal(phone.value, undefined);
+    if (!result.ok) return result;
+    return success({ ...result.value, botLink: this.telegramBotLink() });
+  }
+
+  private telegramBotLink(): string {
+    return `https://t.me/${this.environment.TELEGRAM_BOT_USERNAME}?start=link`;
   }
 
   private async consumeOtpRequestLimits(
@@ -216,7 +226,7 @@ export class IdentityApplicationService {
       createdAt: now,
     };
     await this.unitOfWork.run(() => this.otps.create(otp));
-    await this.sender.send(phone, code);
+    this.background.dispatch(() => this.sender.send(phone, code));
     return success({ message: GENERIC_OTP_RESPONSE });
   }
 

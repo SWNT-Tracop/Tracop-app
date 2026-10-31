@@ -1,6 +1,6 @@
 # TRACOP
 
-Monorepo de TRACOP, plataforma móvil de abastecimiento agropecuario. Esta fase contiene la base técnica (API, contratos compartidos, configuración, infraestructura local y documentación) y el módulo de identidad con autenticación por teléfono + OTP.
+Monorepo de TRACOP, plataforma móvil de abastecimiento agropecuario. Esta fase contiene la base técnica (API, contratos compartidos, configuración, infraestructura local y documentación) y el módulo de identidad con autenticación por teléfono + OTP, y el módulo de mensajería con bot de Telegram (webhook y polling).
 
 ## Requisitos
 
@@ -20,6 +20,87 @@ pnpm dev
 ```
 
 La API queda disponible en `http://localhost:3000/health`; OpenAPI está en `/docs`. En desarrollo, OTP se imprime en la terminal con el teléfono enmascarado. MinIO es opcional: completa `MINIO_ROOT_USER` y `MINIO_ROOT_PASSWORD` y ejecuta `docker compose --profile storage up -d minio` solo cuando pruebes almacenamiento de objetos.
+
+## Bot de Telegram (creación y configuración)
+
+### 1. Crear el bot con @BotFather
+
+1. Abre Telegram y busca **@BotFather**.
+2. Envía `/newbot` y sigue las indicaciones:
+   - **Nombre**: el que verán los usuarios (ej. "TRACOP Demo").
+   - **Username**: debe terminar en `bot` (ej. `tracop_demo_bot`). Guárdalo: es `TELEGRAM_BOT_USERNAME`.
+3. @BotFather te dará el **token** (ej. `123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ`). Guárdalo: es `TELEGRAM_BOT_TOKEN`.
+
+### 2. Variables de entorno obligatorias
+
+Edita `.env` y completa:
+
+```env
+TELEGRAM_MODE=webhook
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+TELEGRAM_WEBHOOK_SECRET=un_secreto_largo_aleatorio_para_validar_webhook
+TELEGRAM_BOT_USERNAME=tracop_demo_bot
+TELEGRAM_API_ROOT=https://api.telegram.org
+TELEGRAM_WEBHOOK_PROCESS_TIMEOUT_MS=5000
+TELEGRAM_RATE_LIMIT_PER_SENDER=20
+TELEGRAM_RATE_LIMIT_GLOBAL=300
+TELEGRAM_RATE_LIMIT_WINDOW_SECONDS=60
+```
+
+> `TELEGRAM_WEBHOOK_SECRET` debe ser un string aleatorio largo (mín. 32 caracteres). Se usa en la cabecera `x-telegram-bot-api-secret-token` para validar que el webhook viene de Telegram.
+
+### 3. Probar con polling (desarrollo local sin túnel)
+
+Para probar sin exponer un HTTPS público:
+
+```env
+TELEGRAM_MODE=polling
+# TELEGRAM_WEBHOOK_SECRET no es necesario en polling
+```
+
+Ejecuta `pnpm dev`. El bot arranca en polling (`bot.on('message')`) y borra cualquier webhook previo. Escribe `/start` al bot en Telegram; deberías ver el botón "Compartir contacto".
+
+> **Nota**: `TELEGRAM_MODE=polling` solo funciona con `NODE_ENV=development`. En producción **debe** ser `webhook`.
+
+### 4. Registrar el webhook (producción / túnel local)
+
+Con un HTTPS accesible desde internet (ej. ngrok, Cloudflare Tunnel, dominio propio):
+
+```bash
+# Ejemplo con ngrok
+ngrok http 3000
+# Copia la URL HTTPS (ej. https://abcd1234.ngrok-free.app)
+```
+
+Registra el webhook:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://abcd1234.ngrok-free.app/webhooks/telegram",
+    "secret_token": "<TELEGRAM_WEBHOOK_SECRET>",
+    "allowed_updates": ["message"],
+    "drop_pending_updates": true
+  }'
+```
+
+Verifica:
+
+```bash
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
+```
+
+Debe mostrar `url` con tu endpoint, `has_custom_certificate: false`, `pending_update_count: 0` y `last_error_date: 0`.
+
+Vuelve a `.env` y pon `TELEGRAM_MODE=webhook`. Reinicia `pnpm dev`.
+
+### 5. Vincular tu cuenta (flujo completo)
+
+1. Escribe `/start` al bot.
+2. Toca el botón **"Compartir contacto"**.
+3. El bot responde "¡Cuenta vinculada!" (o "Ya estaba vinculada").
+4. Ahora `/auth/otp/request` con tu teléfono enviará el OTP por Telegram (si `OTP_SENDER=telegram`).
 
 ## Autenticación (identity)
 
@@ -44,6 +125,10 @@ pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role operator
 ```
 
 El seed local sintético es `pnpm db:seed` y solo se permite con `NODE_ENV=development`.
+
+## Mensajería (messaging)
+
+El módulo `messaging` recibe updates de Telegram (webhook o polling), normaliza a `InboundMessage`, aplica rate limiting e idempotencia, y delega a la aplicación. Soporta texto, contacto, voz, foto y ubicación. La decisión está en [ADR-009](docs/adr/ADR-009.md) y la arquitectura en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#messaging-telegram--whatsapp).
 
 ## Pruebas
 
@@ -70,4 +155,5 @@ El workflow ejecuta `pnpm test` antes del escaneo para generar los reportes LCOV
 - [Arquitectura](docs/ARCHITECTURE.md)
 - [Glosario](docs/GLOSSARY.md)
 - [ADR-008: autenticación por teléfono + OTP](docs/adr/ADR-008.md)
+- [ADR-009: mensajería con Telegram](docs/adr/ADR-009.md)
 - [Aviso de privacidad (texto pendiente)](docs/PRIVACY_NOTICE.md)

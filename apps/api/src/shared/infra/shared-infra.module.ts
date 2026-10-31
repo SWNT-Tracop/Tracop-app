@@ -6,10 +6,12 @@ import { DatabaseService, createDatabasePool } from './database.js';
 import { DrizzleUnitOfWork, unitOfWorkProvider } from './unit-of-work.js';
 import { DrizzleOutboxWriter, outboxWriterProvider } from './outbox-writer.js';
 import { HttpExceptionFilter } from './http-exception.filter.js';
+import { ImmediateBackgroundDispatcher } from './background-dispatcher.js';
 import {
   APP_CLOCK,
   APP_ENVIRONMENT,
   APP_LOGGER,
+  BACKGROUND_DISPATCHER,
   DATABASE_POOL,
   OUTBOX_WRITER,
   UNIT_OF_WORK,
@@ -36,6 +38,8 @@ import { SystemClock } from './system-clock.js';
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     SystemClock,
     { provide: APP_CLOCK, useExisting: SystemClock },
+    ImmediateBackgroundDispatcher,
+    { provide: BACKGROUND_DISPATCHER, useExisting: ImmediateBackgroundDispatcher },
   ],
   exports: [
     APP_ENVIRONMENT,
@@ -45,6 +49,7 @@ import { SystemClock } from './system-clock.js';
     DatabaseService,
     UNIT_OF_WORK,
     OUTBOX_WRITER,
+    BACKGROUND_DISPATCHER,
     HttpExceptionFilter,
   ],
 })

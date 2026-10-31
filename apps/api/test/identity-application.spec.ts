@@ -2,6 +2,7 @@ import { IdentityApplicationService } from '../src/modules/identity/application/
 import {
   FixedClock,
   InMemoryOtpSender,
+  MemoryBackgroundDispatcher,
   MemoryConsentRepository,
   MemoryDeviceRepository,
   MemoryHasher,
@@ -38,6 +39,7 @@ const createHarness = (overrides: Partial<typeof memorySettings> = {}) => {
     clock,
     new MemoryUnitOfWork(),
     new MemoryOutboxWriter(state),
+    new MemoryBackgroundDispatcher(),
   );
   const registration = (phoneValue: string, options: Record<string, unknown> = {}) =>
     service.registerUser({
@@ -129,6 +131,7 @@ describe('identity application use cases with in-memory ports', () => {
     const harness = createHarness();
     const unknown = unwrap(await harness.service.requestOtp('3009999999', '10.0.0.1'));
     expect(unknown.message).toBe('Si el número puede autenticarse, recibirás un código.');
+    expect(unknown.botLink).toBe('https://t.me/tracop_test_bot?start=link');
     await harness.registration('3001234567');
     harness.clock.advance(61);
     expect(unwrap(await harness.service.requestOtp('3001234567', '10.0.0.2')).message).toBe(
