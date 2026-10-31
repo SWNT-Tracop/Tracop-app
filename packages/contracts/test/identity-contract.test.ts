@@ -37,7 +37,7 @@ describe('identity contracts', () => {
       description: '',
     };
     expect(upsertProviderProfileSchema.safeParse(input).success).toBe(true);
-    expect(upsertProviderProfileSchema.safeParse({ ...input, lat: 20 }).success).toBe(false);
+    expect(upsertProviderProfileSchema.safeParse({ ...input, lat: 91 }).success).toBe(false);
     expect(upsertProviderProfileSchema.safeParse({ ...input, phone: '3001234567' }).success).toBe(
       false,
     );

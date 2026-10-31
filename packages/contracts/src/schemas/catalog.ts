@@ -54,8 +54,8 @@ export const createLotSchema = z
     qualityGrade: z.string().max(100).nullable(),
     availableFrom: z.string().datetime({ offset: true }),
     availableUntil: z.string().datetime({ offset: true }),
-    locationLat: z.number().finite().min(-4.3).max(13.7),
-    locationLng: z.number().finite().min(-81.8).max(-66.9),
+    locationLat: z.number().finite().min(-90).max(90),
+    locationLng: z.number().finite().min(-180).max(180),
   })
   .strict();
 
@@ -79,8 +79,8 @@ export const searchLotsQuerySchema = z
     maxPrice: z.coerce.number().int().positive().optional(),
     availableFrom: z.string().datetime({ offset: true }).optional(),
     availableUntil: z.string().datetime({ offset: true }).optional(),
-    lat: z.coerce.number().min(-4.3).max(13.7).optional(),
-    lng: z.coerce.number().min(-81.8).max(-66.9).optional(),
+    lat: z.coerce.number().min(-90).max(90).optional(),
+    lng: z.coerce.number().min(-180).max(180).optional(),
     radiusKm: z.coerce.number().positive().max(500).optional(),
     sort: z.enum(['price', 'distance', 'availability', 'recent']).default('recent'),
   })

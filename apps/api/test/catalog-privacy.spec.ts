@@ -37,4 +37,10 @@ describe('lot response location privacy', () => {
     expect(response).toHaveProperty('locationLat', lot.locationLat);
     expect(response).toHaveProperty('locationLng', lot.locationLng);
   });
+
+  it('rounds third-party distances to integer kilometres with a minimum of one', () => {
+    const near = serializeLotForViewer(lot, publicProvider, 'buyer-id', 0.2);
+    expect(near.distanceKm).toBe(1);
+    expect(JSON.stringify(near)).not.toContain('0.2');
+  });
 });

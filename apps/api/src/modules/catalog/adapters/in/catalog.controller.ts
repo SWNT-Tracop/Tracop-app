@@ -21,6 +21,7 @@ import {
 } from '@tracop/contracts';
 import { AuthGuard, type AuthenticatedRequest, Roles } from '../../../../shared/auth/index.js';
 import { DomainError } from '../../../../shared/kernel/domain-error.js';
+import { isWithinColombia } from '../../../../shared/kernel/geo.js';
 import { InMemorySearchRateLimiter } from '../../../../shared/infra/search-rate-limiter.js';
 import { APP_ENVIRONMENT } from '../../../../shared/infra/tokens.js';
 import type { AppEnvironment } from '../../../../shared/infra/env.js';
@@ -115,6 +116,15 @@ export class LotsController {
     if (input.radiusKm !== undefined && input.radiusKm > this.env.CATALOG_SEARCH_RADIUS_MAX_KM) {
       throw new DomainError('El radio supera el máximo permitido.', 'invalid_search_radius');
     }
+    if (
+      input.lat !== undefined &&
+      input.lng !== undefined &&
+      !isWithinColombia(input.lat, input.lng)
+    )
+      throw new DomainError(
+        'Las coordenadas deben estar dentro de Colombia.',
+        'invalid_coordinates',
+      );
     this.searchRateLimiter.consume(req.identity!.sub);
     let cursor: ReturnType<typeof lotCursorPayloadSchema.parse> | undefined;
     if (input.cursor) {

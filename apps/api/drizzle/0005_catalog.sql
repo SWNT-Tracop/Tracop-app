@@ -37,6 +37,7 @@ CREATE TABLE catalog.lots (
   quality_grade text CHECK (quality_grade IS NULL OR length(quality_grade) <= 100),
   available_from timestamptz NOT NULL,
   available_until timestamptz NOT NULL,
+  -- Bounds mirror apps/api/src/shared/kernel/geo.ts (COLOMBIA_BOUNDS).
   location_lat double precision NOT NULL CHECK (location_lat BETWEEN -4.3 AND 13.7),
   location_lng double precision NOT NULL CHECK (location_lng BETWEEN -81.8 AND -66.9),
   status text NOT NULL CHECK (status IN ('draft','published','reserved','sold_out','expired','cancelled')),

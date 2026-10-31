@@ -15,6 +15,7 @@ import { AuthGuard, type AuthenticatedRequest } from '../../../../shared/auth/in
 import { Public, Roles } from './auth-metadata.js';
 import type { UserRole } from '../../domain/user.js';
 import { DomainError } from '../../../../shared/kernel/domain-error.js';
+import { COLOMBIA_BOUNDS } from '../../../../shared/kernel/geo.js';
 import { PROVIDER_PROFILE_SERVICE } from '../../ports/tokens.js';
 import type { ProviderProfileService } from '../../application/provider-profile-service.js';
 
@@ -206,8 +207,8 @@ export class IdentityController {
         displayName: { type: 'string', minLength: 2, maxLength: 100 },
         municipality: { type: 'string', minLength: 1, maxLength: 100 },
         department: { type: 'string', minLength: 1, maxLength: 100 },
-        lat: { type: 'number', minimum: -4.3, maximum: 13.7 },
-        lng: { type: 'number', minimum: -81.8, maximum: -66.9 },
+        lat: { type: 'number', minimum: COLOMBIA_BOUNDS.minLat, maximum: COLOMBIA_BOUNDS.maxLat },
+        lng: { type: 'number', minimum: COLOMBIA_BOUNDS.minLng, maximum: COLOMBIA_BOUNDS.maxLng },
         description: { type: 'string', maxLength: 1000 },
       },
       additionalProperties: false,

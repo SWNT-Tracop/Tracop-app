@@ -87,8 +87,6 @@ export const lots = catalog.table(
       sql`${table.status} IN ('draft','published','reserved','sold_out','expired','cancelled')`,
     ),
     check('lots_window_check', sql`${table.availableFrom} <= ${table.availableUntil}`),
-    check('lots_lat_check', sql`${table.locationLat} BETWEEN -4.3 AND 13.7`),
-    check('lots_lng_check', sql`${table.locationLng} BETWEEN -81.8 AND -66.9`),
   ],
 );
 

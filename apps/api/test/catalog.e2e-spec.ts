@@ -241,6 +241,45 @@ describePostgres('catalog HTTP flow (Nest + PostgreSQL Testcontainers)', () => {
     expect(ownerView.body.locationLat).toBe(5.5);
     expect(ownerView.body.locationLng).toBe(-73.4);
 
+    const secondLotId = createId();
+    const secondLot = {
+      ...lotInput,
+      id: secondLotId,
+      locationLat: 5.52,
+    };
+    await request(app.getHttpServer())
+      .post('/lots')
+      .set(actor(producer.token))
+      .send(secondLot)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/lots/${secondLotId}/publish`)
+      .set(actor(producer.token))
+      .send({ version: 1 })
+      .expect(201);
+    const firstDistancePage = await request(app.getHttpServer())
+      .get('/lots')
+      .query({ limit: 1, sort: 'distance', lat: 5.5, lng: -73.4, radiusKm: 25 })
+      .set(actor(buyer.token))
+      .expect(200);
+    expect(firstDistancePage.body.nextCursor).toEqual(expect.any(String));
+    expect(firstDistancePage.body.nextCursor).not.toContain('5.52');
+    expect(firstDistancePage.body.nextCursor).not.toContain('-73.4');
+    const secondDistancePage = await request(app.getHttpServer())
+      .get('/lots')
+      .query({
+        limit: 1,
+        sort: 'distance',
+        lat: 5.5,
+        lng: -73.4,
+        radiusKm: 25,
+        cursor: firstDistancePage.body.nextCursor,
+      })
+      .set(actor(buyer.token))
+      .expect(200);
+    expect(secondDistancePage.body.items).toHaveLength(1);
+    expect(secondDistancePage.body.items[0].id).not.toBe(firstDistancePage.body.items[0].id);
+
     const draftId = createId();
     await request(app.getHttpServer())
       .post('/lots')

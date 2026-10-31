@@ -75,8 +75,8 @@ export const upsertProviderProfileSchema = z
     displayName: z.string().trim().min(2).max(100),
     municipality: z.string().trim().min(1).max(100),
     department: z.string().trim().min(1).max(100),
-    lat: z.number().finite().min(-4.3).max(13.7),
-    lng: z.number().finite().min(-81.8).max(-66.9),
+    lat: z.number().finite().min(-90).max(90),
+    lng: z.number().finite().min(-180).max(180),
     description: z.string().trim().max(1000),
   })
   .strict();
