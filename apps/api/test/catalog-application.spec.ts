@@ -41,8 +41,17 @@ describe('catalog application', () => {
     findByIdForOwner: async (id, owner) =>
       lots.get(id)?.providerId === owner ? lots.get(id)! : null,
     findMine: async (owner) => [...lots.values()].filter((lot) => lot.providerId === owner),
-    findVisible: async (now) =>
-      [...lots.values()].filter((lot) => lot.status === 'published' && lot.availableUntil >= now),
+    findVisible: async (now, bounds) =>
+      [...lots.values()].filter(
+        (lot) =>
+          lot.status === 'published' &&
+          lot.availableUntil >= now &&
+          (!bounds ||
+            (lot.locationLat >= bounds.minLat &&
+              lot.locationLat <= bounds.maxLat &&
+              lot.locationLng >= bounds.minLng &&
+              lot.locationLng <= bounds.maxLng)),
+      ),
     save: async (item) => {
       if (lots.has(item.id)) return 'exists';
       lots.set(item.id, item);

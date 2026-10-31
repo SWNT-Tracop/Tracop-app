@@ -34,5 +34,7 @@ describe('catalog contracts', () => {
       createLotSchema.safeParse({ ...lot, id: '018f47a2-8b45-6cc2-9a1e-123456789abc' }).success,
     ).toBe(false);
     expect(searchLotsQuerySchema.safeParse({ lat: 5 }).success).toBe(false);
+    expect(searchLotsQuerySchema.safeParse({ sort: 'distance' }).success).toBe(false);
+    expect(searchLotsQuerySchema.safeParse({ minPrice: 200, maxPrice: 100 }).success).toBe(false);
   });
 });

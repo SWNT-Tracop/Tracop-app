@@ -186,7 +186,20 @@ export class CatalogService {
   }
   async searchVisibleLots(criteria: CatalogSearchCriteria): Promise<CatalogSearchPage> {
     const now = this.clock.now();
-    const allLots = await this.lots.findVisible(now);
+    const bounds =
+      criteria.lat !== undefined && criteria.lng !== undefined && criteria.radiusKm !== undefined
+        ? {
+            minLat: criteria.lat - criteria.radiusKm / 111.32,
+            maxLat: criteria.lat + criteria.radiusKm / 111.32,
+            minLng:
+              criteria.lng -
+              criteria.radiusKm / (111.32 * Math.cos((criteria.lat * Math.PI) / 180)),
+            maxLng:
+              criteria.lng +
+              criteria.radiusKm / (111.32 * Math.cos((criteria.lat * Math.PI) / 180)),
+          }
+        : undefined;
+    const allLots = await this.lots.findVisible(now, bounds);
     const allProducts = await this.products.findAll();
     const productById = new Map(allProducts.map((item) => [item.id, item]));
     const productsByCategory = new Set<string>();

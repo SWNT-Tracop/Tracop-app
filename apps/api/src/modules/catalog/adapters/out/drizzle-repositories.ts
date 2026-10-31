@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lte, lt, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../../../shared/infra/database.js';
 import { APP_CLOCK, OUTBOX_WRITER, UNIT_OF_WORK } from '../../../../shared/infra/tokens.js';
 import type { Clock } from '../../../../shared/kernel/clock.js';
@@ -193,15 +193,28 @@ export class DrizzleLotRepository implements LotRepository {
         .orderBy(asc(lots.createdAt))
     ).map(toLot);
   }
-  async findVisible(now: Date): Promise<readonly LotProps[]> {
+  async findVisible(
+    now: Date,
+    bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number },
+  ): Promise<readonly LotProps[]> {
+    const predicates = [
+      eq(lots.status, 'published'),
+      gte(lots.availableUntil, now),
+      isNull(lots.deletedAt),
+    ];
+    if (bounds)
+      predicates.push(
+        gte(lots.locationLat, bounds.minLat),
+        lte(lots.locationLat, bounds.maxLat),
+        gte(lots.locationLng, bounds.minLng),
+        lte(lots.locationLng, bounds.maxLng),
+      );
     return (
       await this.database
         .current()
         .select()
         .from(lots)
-        .where(
-          and(eq(lots.status, 'published'), gte(lots.availableUntil, now), isNull(lots.deletedAt)),
-        )
+        .where(and(...predicates))
         .orderBy(asc(lots.availableFrom), asc(lots.id))
     ).map(toLot);
   }

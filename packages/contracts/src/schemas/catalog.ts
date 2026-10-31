@@ -93,4 +93,17 @@ export const searchLotsQuerySchema = z
     ) {
       context.addIssue({ code: 'custom', message: 'lat, lng y radiusKm deben enviarse juntos.' });
     }
+    if (value.sort === 'distance' && value.lat === undefined) {
+      context.addIssue({ code: 'custom', message: 'El orden por distancia requiere ubicación.' });
+    }
+    if (
+      value.minPrice !== undefined &&
+      value.maxPrice !== undefined &&
+      value.minPrice > value.maxPrice
+    ) {
+      context.addIssue({ code: 'custom', message: 'El rango de precio es inválido.' });
+    }
+    if (value.availableFrom && value.availableUntil && value.availableFrom > value.availableUntil) {
+      context.addIssue({ code: 'custom', message: 'El rango de disponibilidad es inválido.' });
+    }
   });

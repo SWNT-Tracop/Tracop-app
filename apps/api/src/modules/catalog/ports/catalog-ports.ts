@@ -21,7 +21,10 @@ export interface LotRepository {
   findById(id: string): Promise<LotProps | null>;
   findByIdForOwner(id: string, providerId: string): Promise<LotProps | null>;
   findMine(providerId: string): Promise<readonly LotProps[]>;
-  findVisible(now: Date): Promise<readonly LotProps[]>;
+  findVisible(
+    now: Date,
+    bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number },
+  ): Promise<readonly LotProps[]>;
   save(lot: LotProps): Promise<'created' | 'exists'>;
   update(lot: LotProps, expectedVersion: number): Promise<boolean>;
   findExpired(now: Date, limit: number): Promise<readonly LotProps[]>;
