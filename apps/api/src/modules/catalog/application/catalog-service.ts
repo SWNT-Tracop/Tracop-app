@@ -135,7 +135,7 @@ export class CatalogService {
       {
         ...current,
         productId: patch.productId ?? current.productId,
-        quantity: patch.quantity ?? current.quantity,
+        quantityMilli: patch.quantityMilli ?? current.quantityMilli,
         unit: patch.unit ?? current.unit,
         unitPrice: patch.unitPrice ?? current.unitPrice,
         qualityGrade: patch.qualityGrade === undefined ? current.qualityGrade : patch.qualityGrade,

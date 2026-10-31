@@ -49,7 +49,7 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     const input = {
       id: createId(),
       productId: options.productId ?? productId,
-      quantity: 10,
+      quantityMilli: 10_000n,
       unit: 'kg' as const,
       unitPrice: options.price ?? 1000n,
       qualityGrade: null,
@@ -413,7 +413,7 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     const input = {
       id: createId(),
       productId,
-      quantity: 10,
+      quantityMilli: 10_000n,
       unit: 'kg' as const,
       unitPrice: 1000n,
       qualityGrade: null,
@@ -428,8 +428,8 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     ]);
     expect(createdA.id).toBe(createdB.id);
     const edits = await Promise.allSettled([
-      catalog.updateLot(producer, input.id, 1, { quantity: 11 }),
-      catalog.updateLot(producer, input.id, 1, { quantity: 12 }),
+      catalog.updateLot(producer, input.id, 1, { quantityMilli: 11_000n }),
+      catalog.updateLot(producer, input.id, 1, { quantityMilli: 12_000n }),
     ]);
     expect(edits.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(edits.filter((result) => result.status === 'rejected')).toHaveLength(1);

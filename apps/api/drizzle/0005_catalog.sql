@@ -31,7 +31,7 @@ CREATE TABLE catalog.lots (
   id uuid PRIMARY KEY,
   provider_id uuid NOT NULL,
   product_id uuid NOT NULL REFERENCES catalog.products(id),
-  quantity double precision NOT NULL CHECK (quantity > 0),
+  quantity numeric(12,3) NOT NULL CHECK (quantity > 0),
   unit text NOT NULL CHECK (unit IN ('kg','g','lb','und','docena','arroba','quintal','caja','mano','bulto')),
   unit_price bigint NOT NULL CHECK (unit_price > 0),
   quality_grade text CHECK (quality_grade IS NULL OR length(quality_grade) <= 100),

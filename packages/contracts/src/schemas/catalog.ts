@@ -48,7 +48,7 @@ export const createLotSchema = z
       .uuid()
       .refine((id) => id[14] === '7', 'El id debe ser UUID v7.'),
     productId: z.string().uuid(),
-    quantity: z.number().positive().finite(),
+    quantityMilli: z.string().regex(/^[1-9]\d{0,11}$/),
     unit: productUnitSchema,
     unitPrice: z.number().int().positive().safe(),
     qualityGrade: z.string().max(100).nullable(),

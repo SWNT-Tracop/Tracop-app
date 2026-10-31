@@ -5,7 +5,7 @@ const props: LotProps = {
   id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
   providerId: 'provider',
   productId: 'product',
-  quantity: 10,
+  quantityMilli: 10_000n,
   unit: 'kg',
   unitPrice: 1000n,
   qualityGrade: null,
@@ -31,7 +31,7 @@ describe('Lot domain', () => {
     ).toBe(false);
   });
   it('rejects invalid business values', () => {
-    expect(() => Lot.create({ ...props, quantity: 0 }, 'kg', now, 90)).toThrow();
+    expect(() => Lot.create({ ...props, quantityMilli: 0n }, 'kg', now, 90)).toThrow();
     expect(() => Lot.create({ ...props, unitPrice: 0n }, 'kg', now, 90)).toThrow();
     expect(() => Lot.create(props, 'g', now, 90)).toThrow();
     expect(() =>

@@ -186,7 +186,7 @@ describePostgres('catalog HTTP flow (Nest + PostgreSQL Testcontainers)', () => {
     const lotInput = {
       id: lotId,
       productId,
-      quantity: 25,
+      quantityMilli: '25000',
       unit: 'kg',
       unitPrice: 3200,
       qualityGrade: 'A',

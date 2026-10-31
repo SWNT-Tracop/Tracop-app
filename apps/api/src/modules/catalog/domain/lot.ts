@@ -2,6 +2,24 @@ import { DomainError } from '../../../shared/kernel/domain-error.js';
 import { isWithinColombia } from '../../../shared/kernel/geo.js';
 import type { ProductUnit } from './product.js';
 
+export const MAX_QUANTITY_MILLI = 999_999_999_999n;
+
+export const quantityMilliToDecimal = (quantityMilli: bigint): string => {
+  const whole = quantityMilli / 1000n;
+  const fractional = (quantityMilli % 1000n).toString().padStart(3, '0');
+  return `${whole}.${fractional}`;
+};
+
+export const quantityDecimalToMilli = (quantity: string): bigint => {
+  const match = /^(0|[1-9]\d{0,8})(?:\.(\d{1,3}))?$/.exec(quantity);
+  if (!match) throw new Error('Invalid numeric(12,3) quantity from PostgreSQL.');
+  const fraction = (match[2] ?? '').padEnd(3, '0');
+  return BigInt(match[1]!) * 1000n + BigInt(fraction || '0');
+};
+
+export const subtotalMilliCop = (unitPriceCop: bigint, quantityMilli: bigint): bigint =>
+  unitPriceCop * quantityMilli;
+
 export const LOT_STATES = [
   'draft',
   'published',
@@ -25,7 +43,7 @@ export interface LotProps {
   readonly id: string;
   readonly providerId: string;
   readonly productId: string;
-  readonly quantity: number;
+  readonly quantityMilli: bigint;
   readonly unit: ProductUnit;
   readonly unitPrice: bigint;
   readonly qualityGrade: string | null;
@@ -55,7 +73,7 @@ export class Lot {
   }
 
   static create(props: LotProps, productUnit: ProductUnit, now: Date, maxHorizonDays: number): Lot {
-    if (!(props.quantity > 0) || !Number.isFinite(props.quantity))
+    if (props.quantityMilli <= 0n || props.quantityMilli > MAX_QUANTITY_MILLI)
       throw new DomainError('La cantidad debe ser positiva.', 'invalid_quantity');
     if (props.unitPrice <= 0n)
       throw new DomainError('El precio debe ser un entero positivo en COP.', 'invalid_price');

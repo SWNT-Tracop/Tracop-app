@@ -5,7 +5,7 @@ const lot: LotProps = {
   id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
   providerId: 'provider-secret-id',
   productId: 'product',
-  quantity: 5,
+  quantityMilli: 5_000n,
   unit: 'kg',
   unitPrice: 2500n,
   qualityGrade: null,

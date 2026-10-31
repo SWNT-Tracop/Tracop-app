@@ -20,7 +20,7 @@ describe('catalog contracts', () => {
     const lot = {
       id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
       productId: '018f47a2-8b45-7cc2-9a1e-123456789abd',
-      quantity: 2,
+      quantityMilli: '2000',
       unit: 'kg',
       unitPrice: 2500,
       qualityGrade: null,
@@ -36,5 +36,24 @@ describe('catalog contracts', () => {
     expect(searchLotsQuerySchema.safeParse({ lat: 5 }).success).toBe(false);
     expect(searchLotsQuerySchema.safeParse({ sort: 'distance' }).success).toBe(false);
     expect(searchLotsQuerySchema.safeParse({ minPrice: 200, maxPrice: 100 }).success).toBe(false);
+  });
+
+  it('accepts quantity only as positive integer thousandths within numeric(12,3)', () => {
+    const lot = {
+      id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
+      productId: '018f47a2-8b45-7cc2-9a1e-123456789abd',
+      quantityMilli: '2000',
+      unit: 'kg',
+      unitPrice: 2500,
+      qualityGrade: null,
+      availableFrom: '2026-10-30T12:00:00Z',
+      availableUntil: '2026-10-31T12:00:00Z',
+      locationLat: 5.5,
+      locationLng: -73.4,
+    };
+    expect(createLotSchema.safeParse({ ...lot, quantityMilli: '1' }).success).toBe(true);
+    expect(createLotSchema.safeParse({ ...lot, quantityMilli: '999999999999' }).success).toBe(true);
+    for (const quantityMilli of ['0', '1000000000000', '1.5', '01', '-1'])
+      expect(createLotSchema.safeParse({ ...lot, quantityMilli }).success).toBe(false);
   });
 });

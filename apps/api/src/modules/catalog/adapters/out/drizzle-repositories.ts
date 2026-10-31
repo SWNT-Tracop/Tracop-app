@@ -6,7 +6,7 @@ import type { Clock } from '../../../../shared/kernel/clock.js';
 import type { OutboxWriter } from '../../../../shared/ports/outbox-writer.js';
 import type { UnitOfWork } from '../../../../shared/infra/unit-of-work.js';
 import type { CategoryProps } from '../../domain/category.js';
-import type { LotProps } from '../../domain/lot.js';
+import { quantityDecimalToMilli, quantityMilliToDecimal, type LotProps } from '../../domain/lot.js';
 import type { ProductProps } from '../../domain/product.js';
 import type {
   CatalogClock,
@@ -40,7 +40,7 @@ const toLot = (row: typeof lots.$inferSelect): LotProps => ({
   id: row.id,
   providerId: row.providerId,
   productId: row.productId,
-  quantity: row.quantity,
+  quantityMilli: quantityDecimalToMilli(row.quantity),
   unit: row.unit as LotProps['unit'],
   unitPrice: row.unitPrice,
   qualityGrade: row.qualityGrade,
@@ -220,10 +220,17 @@ export class DrizzleLotRepository implements LotRepository {
   }
   async save(lot: LotProps): Promise<'created' | 'exists'> {
     const now = this.clock.now();
+    const { quantityMilli, ...lotColumns } = lot;
     const rows = await this.database
       .current()
       .insert(lots)
-      .values({ ...lot, createdAt: now, updatedAt: now, deletedAt: null })
+      .values({
+        ...lotColumns,
+        quantity: quantityMilliToDecimal(quantityMilli),
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      })
       .onConflictDoNothing()
       .returning({ id: lots.id });
     return rows.length ? 'created' : 'exists';
@@ -234,7 +241,7 @@ export class DrizzleLotRepository implements LotRepository {
       .update(lots)
       .set({
         productId: lot.productId,
-        quantity: lot.quantity,
+        quantity: quantityMilliToDecimal(lot.quantityMilli),
         unit: lot.unit,
         unitPrice: lot.unitPrice,
         qualityGrade: lot.qualityGrade,

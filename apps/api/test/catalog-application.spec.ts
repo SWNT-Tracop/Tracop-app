@@ -95,7 +95,7 @@ describe('catalog application', () => {
   const lotInput = {
     id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
     productId: 'product',
-    quantity: 3,
+    quantityMilli: 3_000n,
     unit: 'kg' as const,
     unitPrice: 1200n,
     qualityGrade: null,

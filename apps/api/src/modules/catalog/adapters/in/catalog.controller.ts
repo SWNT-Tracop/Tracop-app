@@ -95,6 +95,7 @@ export class LotsController {
     return this.toResponse(
       await this.catalog.createLot(req.identity!, {
         ...input,
+        quantityMilli: BigInt(input.quantityMilli),
         unitPrice: BigInt(input.unitPrice),
         availableFrom: new Date(input.availableFrom),
         availableUntil: new Date(input.availableUntil),

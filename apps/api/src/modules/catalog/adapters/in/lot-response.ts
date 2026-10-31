@@ -10,6 +10,7 @@ export const serializeLotForViewer = (
   const { locationLat, locationLng, providerId, ...publicFields } = lot;
   return {
     ...publicFields,
+    quantityMilli: lot.quantityMilli.toString(),
     ...(viewerId === providerId ? { providerId } : {}),
     unitPrice: lot.unitPrice.toString(),
     provider,
