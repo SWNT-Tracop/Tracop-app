@@ -189,14 +189,12 @@ export class CatalogService {
     const bounds =
       criteria.lat !== undefined && criteria.lng !== undefined && criteria.radiusKm !== undefined
         ? {
-            minLat: criteria.lat - criteria.radiusKm / 111.32,
-            maxLat: criteria.lat + criteria.radiusKm / 111.32,
+            minLat: criteria.lat - criteria.radiusKm / 110.5,
+            maxLat: criteria.lat + criteria.radiusKm / 110.5,
             minLng:
-              criteria.lng -
-              criteria.radiusKm / (111.32 * Math.cos((criteria.lat * Math.PI) / 180)),
+              criteria.lng - criteria.radiusKm / (110.5 * Math.cos((criteria.lat * Math.PI) / 180)),
             maxLng:
-              criteria.lng +
-              criteria.radiusKm / (111.32 * Math.cos((criteria.lat * Math.PI) / 180)),
+              criteria.lng + criteria.radiusKm / (110.5 * Math.cos((criteria.lat * Math.PI) / 180)),
           }
         : undefined;
     const allLots = await this.lots.findVisible(now, bounds);
@@ -250,15 +248,15 @@ export class CatalogService {
         criteria.lng !== undefined &&
         criteria.radiusKm !== undefined
       ) {
-        const latDelta = criteria.radiusKm / 111.32;
-        const lngDelta = criteria.radiusKm / (111.32 * Math.cos((criteria.lat * Math.PI) / 180));
+        const latDelta = criteria.radiusKm / 110.5;
+        const lngDelta = criteria.radiusKm / (110.5 * Math.cos((criteria.lat * Math.PI) / 180));
         if (
           Math.abs(lot.locationLat - criteria.lat) > latDelta ||
           Math.abs(lot.locationLng - criteria.lng) > lngDelta
         )
           return [];
         distanceKm = this.haversine(criteria.lat, criteria.lng, lot.locationLat, lot.locationLng);
-        if (distanceKm > criteria.radiusKm) return [];
+        if (distanceKm > criteria.radiusKm + 1e-9) return [];
       }
       return [{ lot, ...(distanceKm !== undefined ? { distanceKm } : {}) }];
     });
