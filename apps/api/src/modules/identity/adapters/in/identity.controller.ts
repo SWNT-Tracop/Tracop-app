@@ -10,7 +10,7 @@ import {
 } from '@tracop/contracts';
 import type { IdentityApplicationService } from '../../application/identity-application-service.js';
 import { IDENTITY_APPLICATION } from '../../ports/tokens.js';
-import { IdentityAuthGuard, type AuthenticatedRequest } from './identity-auth.guard.js';
+import { AuthGuard, type AuthenticatedRequest } from '../../../../shared/auth/index.js';
 import { Public, Roles } from './auth-metadata.js';
 import type { UserRole } from '../../domain/user.js';
 import { DomainError } from '../../../../shared/kernel/domain-error.js';
@@ -25,7 +25,7 @@ const clientIp = (request: Request): string =>
 
 @ApiTags('identity')
 @Controller()
-@UseGuards(IdentityAuthGuard)
+@UseGuards(AuthGuard)
 export class IdentityController {
   constructor(
     @Inject(IDENTITY_APPLICATION) private readonly identity: IdentityApplicationService,

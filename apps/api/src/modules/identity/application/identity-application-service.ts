@@ -8,7 +8,6 @@ import { PhoneNumber } from '../domain/phone-number.js';
 import { Session, type SessionProps } from '../domain/session.js';
 import { SELF_REGISTERABLE_ROLES, User, type UserProps, type UserRole } from '../domain/user.js';
 import type {
-  AccessTokenClaims,
   ConsentRepository,
   DeviceRepository,
   IdentityUnitOfWork,
@@ -30,6 +29,17 @@ export const GENERIC_REGISTER_RESPONSE = 'Si el registro puede continuar, recibi
 export interface RequestOtpResult {
   message: string;
   botLink: string;
+}
+
+// Verified access claims the edge hands to these use cases: profile reads use
+// the subject and logout uses the session.
+export interface AuthenticatedActor {
+  readonly sub: string;
+  readonly role: string;
+  readonly sid: string;
+  readonly did: string;
+  readonly jti: string;
+  readonly exp: number;
 }
 
 export interface RegisterUserCommand {
@@ -364,7 +374,7 @@ export class IdentityApplicationService {
     });
   }
 
-  async logout(claims: AccessTokenClaims): Promise<Result<{ message: string }, DomainError>> {
+  async logout(claims: AuthenticatedActor): Promise<Result<{ message: string }, DomainError>> {
     const now = this.clock.now();
     return this.unitOfWork.run(async () => {
       const session = await this.sessions.revokeSession(claims.sid, now, 'logout');
@@ -378,7 +388,7 @@ export class IdentityApplicationService {
     });
   }
 
-  async getMe(claims: AccessTokenClaims): Promise<Result<PublicUser, DomainError>> {
+  async getMe(claims: AuthenticatedActor): Promise<Result<PublicUser, DomainError>> {
     const user = await this.users.findById(claims.sub);
     return user
       ? success(this.publicUser(user))
@@ -386,7 +396,7 @@ export class IdentityApplicationService {
   }
 
   async updateMe(
-    claims: AccessTokenClaims,
+    claims: AuthenticatedActor,
     update: { fullName?: string; locale?: string },
   ): Promise<Result<PublicUser, DomainError>> {
     const now = this.clock.now();

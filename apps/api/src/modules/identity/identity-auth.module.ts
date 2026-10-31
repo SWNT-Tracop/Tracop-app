@@ -8,11 +8,12 @@ import {
 } from '../../shared/infra/tokens.js';
 import { IdentityApplicationService } from './application/identity-application-service.js';
 import { IdentityController } from './adapters/in/identity.controller.js';
-import { IdentityAuthGuard } from './adapters/in/identity-auth.guard.js';
+import { IdentityAccessTokenVerifier } from './adapters/out/identity-access-token-verifier.js';
 import { IdentityDataModule } from './identity-data.module.js';
 import {
   CONSENT_REPOSITORY,
   DEVICE_REPOSITORY,
+  IDENTITY_ACCESS_TOKEN_VERIFIER,
   IDENTITY_APPLICATION,
   OTP_REPOSITORY,
   OTP_SENDER,
@@ -48,8 +49,9 @@ import {
       useFactory: (...dependencies: ConstructorParameters<typeof IdentityApplicationService>) =>
         new IdentityApplicationService(...dependencies),
     },
-    IdentityAuthGuard,
+    IdentityAccessTokenVerifier,
+    { provide: IDENTITY_ACCESS_TOKEN_VERIFIER, useExisting: IdentityAccessTokenVerifier },
   ],
-  exports: [IDENTITY_APPLICATION],
+  exports: [IDENTITY_APPLICATION, IDENTITY_ACCESS_TOKEN_VERIFIER],
 })
 export class IdentityAuthModule {}

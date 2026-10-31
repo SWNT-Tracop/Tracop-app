@@ -3,6 +3,7 @@ export { IdentityChannelModule } from './identity-channel.module.js';
 export { DevelopmentOtpSender, InMemoryOtpSender } from './adapters/out/otp-senders.js';
 export {
   CHANNEL_LINK_REPOSITORY,
+  IDENTITY_ACCESS_TOKEN_VERIFIER,
   IDENTITY_APPLICATION,
   IDENTITY_CHANNEL_APPLICATION,
   OTP_SENDER,
