@@ -72,18 +72,13 @@ ngrok http 3000
 # Copia la URL HTTPS (ej. https://abcd1234.ngrok-free.app)
 ```
 
-Registra el webhook:
+Registra el webhook con el script incluido (usa las variables del `.env`):
 
 ```bash
-curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://abcd1234.ngrok-free.app/webhooks/telegram",
-    "secret_token": "<TELEGRAM_WEBHOOK_SECRET>",
-    "allowed_updates": ["message"],
-    "drop_pending_updates": true
-  }'
+pnpm telegram:set-webhook -- https://abcd1234.ngrok-free.app/webhooks/telegram
 ```
+
+El script envía `allowed_updates: ['message']`, lo que coincide con lo que procesa el código actual (mensajes de chat privado). Si en el futuro se añade soporte para botones inline (`callback_query`), habrá que agregarlo tanto aquí como en el normalizador.
 
 Verifica:
 
@@ -128,7 +123,9 @@ El seed local sintético es `pnpm db:seed` y solo se permite con `NODE_ENV=devel
 
 ## Mensajería (messaging)
 
-El módulo `messaging` recibe updates de Telegram (webhook o polling), normaliza a `InboundMessage`, aplica rate limiting e idempotencia, y delega a la aplicación. Soporta texto, contacto, voz, foto y ubicación. La decisión está en [ADR-009](docs/adr/ADR-009.md) y la arquitectura en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#messaging-telegram--whatsapp).
+El módulo `messaging` recibe updates de Telegram (webhook o polling), normaliza a `InboundMessage`, aplica rate limiting e idempotencia, y delega a la aplicación.
+
+**Tipos soportados**: texto, contacto (botón de compartir). Los tipos voz, foto y ubicación se normalizan correctamente a `InboundMessage` pero el bot responde «aún no disponible» hasta que se implemente el asistente de IA. La decisión está en [ADR-009](docs/adr/ADR-009.md) y la arquitectura en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#messaging-telegram--whatsapp).
 
 ## Pruebas
 
