@@ -21,6 +21,7 @@ export interface LotRepository {
   findById(id: string): Promise<LotProps | null>;
   findByIdForOwner(id: string, providerId: string): Promise<LotProps | null>;
   findMine(providerId: string): Promise<readonly LotProps[]>;
+  findVisible(now: Date): Promise<readonly LotProps[]>;
   save(lot: LotProps): Promise<'created' | 'exists'>;
   update(lot: LotProps, expectedVersion: number): Promise<boolean>;
   findExpired(now: Date, limit: number): Promise<readonly LotProps[]>;
@@ -40,6 +41,35 @@ export interface ProviderDirectoryPort {
 }
 export interface CatalogClock {
   now(): Date;
+}
+export interface CatalogCursor {
+  readonly version: 1;
+  readonly sort: 'price' | 'distance' | 'availability' | 'recent';
+  readonly key: string;
+  readonly id: string;
+}
+export interface CatalogSearchCriteria {
+  readonly limit: number;
+  readonly sort: CatalogCursor['sort'];
+  readonly cursor?: CatalogCursor;
+  readonly categoryId?: string;
+  readonly productId?: string;
+  readonly q?: string;
+  readonly minPrice?: number;
+  readonly maxPrice?: number;
+  readonly availableFrom?: Date;
+  readonly availableUntil?: Date;
+  readonly lat?: number;
+  readonly lng?: number;
+  readonly radiusKm?: number;
+}
+export interface CatalogSearchItem {
+  readonly lot: LotProps;
+  readonly distanceKm?: number;
+}
+export interface CatalogSearchPage {
+  readonly items: readonly CatalogSearchItem[];
+  readonly nextCursor?: CatalogCursor;
 }
 
 export const CATALOG_CATEGORY_REPOSITORY = Symbol('CATALOG_CATEGORY_REPOSITORY');

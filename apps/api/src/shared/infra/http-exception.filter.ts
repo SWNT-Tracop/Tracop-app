@@ -16,6 +16,9 @@ const domainStatus: Record<string, number> = {
   user_not_found: HttpStatus.NOT_FOUND,
   access_denied: HttpStatus.FORBIDDEN,
   rate_limited: HttpStatus.TOO_MANY_REQUESTS,
+  forbidden: HttpStatus.FORBIDDEN,
+  not_found: HttpStatus.NOT_FOUND,
+  version_conflict: HttpStatus.CONFLICT,
 };
 
 @Catch()

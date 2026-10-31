@@ -41,6 +41,8 @@ describe('catalog application', () => {
     findByIdForOwner: async (id, owner) =>
       lots.get(id)?.providerId === owner ? lots.get(id)! : null,
     findMine: async (owner) => [...lots.values()].filter((lot) => lot.providerId === owner),
+    findVisible: async (now) =>
+      [...lots.values()].filter((lot) => lot.status === 'published' && lot.availableUntil >= now),
     save: async (item) => {
       if (lots.has(item.id)) return 'exists';
       lots.set(item.id, item);
@@ -151,5 +153,54 @@ describe('catalog application', () => {
     await expect(serviceWithoutProfile.publishLot(actor, lotInput.id, 1)).rejects.toMatchObject({
       code: 'profile_required',
     });
+  });
+
+  it('paginates deterministically with id tie-breaks for every sort including distance', async () => {
+    const templates = [
+      {
+        ...lotInput,
+        providerId: actor.sub,
+        id: '018f47a2-8b45-7cc2-9a1e-123456789ab1',
+        status: 'published' as const,
+        version: 2,
+        unitPrice: 1000n,
+        locationLat: 5.5,
+        availableFrom: new Date('2026-10-31T00:00:00Z'),
+      },
+      {
+        ...lotInput,
+        providerId: actor.sub,
+        id: '018f47a2-8b45-7cc2-9a1e-123456789ab2',
+        status: 'published' as const,
+        version: 2,
+        unitPrice: 1000n,
+        locationLat: 5.5,
+        availableFrom: new Date('2026-10-31T00:00:00Z'),
+      },
+      {
+        ...lotInput,
+        providerId: actor.sub,
+        id: '018f47a2-8b45-7cc2-9a1e-123456789ab3',
+        status: 'published' as const,
+        version: 2,
+        unitPrice: 2000n,
+        locationLat: 5.6,
+        availableFrom: new Date('2026-11-01T00:00:00Z'),
+      },
+    ];
+    for (const item of templates) lots.set(item.id, item);
+    for (const sort of ['price', 'availability', 'recent', 'distance'] as const) {
+      const location = sort === 'distance' ? { lat: 5.5, lng: -73.4, radiusKm: 50 } : {};
+      const first = await service.searchVisibleLots({ limit: 1, sort, ...location });
+      expect(first.items).toHaveLength(1);
+      expect(first.nextCursor).toBeDefined();
+      const second = await service.searchVisibleLots({
+        limit: 2,
+        sort,
+        cursor: first.nextCursor!,
+        ...location,
+      });
+      expect(second.items.map(({ lot }) => lot.id)).not.toContain(first.items[0]!.lot.id);
+    }
   });
 });

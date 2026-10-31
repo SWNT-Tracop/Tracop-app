@@ -59,6 +59,15 @@ export const createLotSchema = z
   })
   .strict();
 
+export const lotCursorPayloadSchema = z
+  .object({
+    version: z.literal(1),
+    sort: z.enum(['price', 'distance', 'availability', 'recent']),
+    key: z.string().min(1).max(100),
+    id: z.string().uuid(),
+  })
+  .strict();
+
 export const searchLotsQuerySchema = z
   .object({
     cursor: z.string().max(1024).optional(),

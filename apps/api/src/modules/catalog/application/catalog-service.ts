@@ -12,6 +12,9 @@ import {
   CATALOG_UNIT_OF_WORK,
   PROVIDER_DIRECTORY,
   type CatalogClock,
+  type CatalogCursor,
+  type CatalogSearchCriteria,
+  type CatalogSearchPage,
   type CatalogEventWriter,
   type CatalogUnitOfWork,
   type CategoryRepository,
@@ -104,7 +107,12 @@ export class CatalogService {
       this.clock.now(),
       this.settings.lotHorizonDays,
     );
-    await this.lots.save(lot.props);
+    const outcome = await this.lots.save(lot.props);
+    if (outcome === 'exists') {
+      const raced = await this.lots.findById(input.id);
+      if (raced?.providerId === actor.sub) return raced;
+      throw new DomainError('Conflicto de versión.', 'version_conflict');
+    }
     return lot.props;
   }
 
@@ -126,7 +134,15 @@ export class CatalogService {
     const validated = Lot.create(
       {
         ...current,
-        ...patch,
+        productId: patch.productId ?? current.productId,
+        quantity: patch.quantity ?? current.quantity,
+        unit: patch.unit ?? current.unit,
+        unitPrice: patch.unitPrice ?? current.unitPrice,
+        qualityGrade: patch.qualityGrade === undefined ? current.qualityGrade : patch.qualityGrade,
+        availableFrom: patch.availableFrom ?? current.availableFrom,
+        availableUntil: patch.availableUntil ?? current.availableUntil,
+        locationLat: patch.locationLat ?? current.locationLat,
+        locationLng: patch.locationLng ?? current.locationLng,
         providerId: actor.sub,
         status: 'draft',
         version: current.version + 1,
@@ -167,6 +183,105 @@ export class CatalogService {
   async getMyLots(actor: Actor): Promise<readonly LotProps[]> {
     this.requireRole(actor, PROVIDERS);
     return this.lots.findMine(actor.sub);
+  }
+  async searchVisibleLots(criteria: CatalogSearchCriteria): Promise<CatalogSearchPage> {
+    const now = this.clock.now();
+    const allLots = await this.lots.findVisible(now);
+    const allProducts = await this.products.findAll();
+    const productById = new Map(allProducts.map((item) => [item.id, item]));
+    const productsByCategory = new Set<string>();
+    if (criteria.categoryId) {
+      const allCategories = await this.categories.findAll();
+      const descendants = new Set([criteria.categoryId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const category of allCategories) {
+          if (
+            category.parentId &&
+            descendants.has(category.parentId) &&
+            !descendants.has(category.id)
+          ) {
+            descendants.add(category.id);
+            changed = true;
+          }
+        }
+      }
+      for (const product of allProducts)
+        if (descendants.has(product.categoryId)) productsByCategory.add(product.id);
+    }
+    const tokens =
+      criteria.q
+        ?.normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('es-CO')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean) ?? [];
+    const result = allLots.flatMap((lot) => {
+      const product = productById.get(lot.productId);
+      if (!product || (criteria.productId && lot.productId !== criteria.productId)) return [];
+      if (criteria.categoryId && !productsByCategory.has(lot.productId)) return [];
+      const productText = product.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('es-CO');
+      if (tokens.some((token) => !productText.includes(token))) return [];
+      if (criteria.minPrice !== undefined && lot.unitPrice < BigInt(criteria.minPrice)) return [];
+      if (criteria.maxPrice !== undefined && lot.unitPrice > BigInt(criteria.maxPrice)) return [];
+      if (criteria.availableFrom && lot.availableUntil < criteria.availableFrom) return [];
+      if (criteria.availableUntil && lot.availableFrom > criteria.availableUntil) return [];
+      let distanceKm: number | undefined;
+      if (
+        criteria.lat !== undefined &&
+        criteria.lng !== undefined &&
+        criteria.radiusKm !== undefined
+      ) {
+        const latDelta = criteria.radiusKm / 111.32;
+        const lngDelta = criteria.radiusKm / (111.32 * Math.cos((criteria.lat * Math.PI) / 180));
+        if (
+          Math.abs(lot.locationLat - criteria.lat) > latDelta ||
+          Math.abs(lot.locationLng - criteria.lng) > lngDelta
+        )
+          return [];
+        distanceKm = this.haversine(criteria.lat, criteria.lng, lot.locationLat, lot.locationLng);
+        if (distanceKm > criteria.radiusKm) return [];
+      }
+      return [{ lot, ...(distanceKm !== undefined ? { distanceKm } : {}) }];
+    });
+    const selectedSort =
+      criteria.sort === 'distance' && criteria.lat === undefined ? 'recent' : criteria.sort;
+    result.sort((left, right) => {
+      let order = 0;
+      if (selectedSort === 'price')
+        order =
+          left.lot.unitPrice < right.lot.unitPrice
+            ? -1
+            : left.lot.unitPrice > right.lot.unitPrice
+              ? 1
+              : 0;
+      else if (selectedSort === 'distance')
+        order = (left.distanceKm ?? Infinity) - (right.distanceKm ?? Infinity);
+      else if (selectedSort === 'availability')
+        order = left.lot.availableFrom.getTime() - right.lot.availableFrom.getTime();
+      else order = right.lot.id.localeCompare(left.lot.id);
+      return order || left.lot.id.localeCompare(right.lot.id);
+    });
+    const afterCursor = criteria.cursor
+      ? result.filter((item) => this.isAfterCursor(item, criteria.cursor!))
+      : result;
+    const pageItems = afterCursor.slice(0, criteria.limit);
+    const last = pageItems.at(-1);
+    const nextCursor =
+      afterCursor.length > criteria.limit && last
+        ? {
+            version: 1 as const,
+            sort: selectedSort,
+            key: this.sortKey(last, selectedSort),
+            id: last.lot.id,
+          }
+        : undefined;
+    return { items: pageItems, ...(nextCursor ? { nextCursor } : {}) };
   }
   async getLot(actor: Actor, id: string): Promise<LotProps> {
     const own = await this.lots.findByIdForOwner(id, actor.sub);
@@ -236,5 +351,37 @@ export class CatalogService {
       cursor = parent;
     }
     return result;
+  }
+
+  private haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const radians = (degrees: number): number => (degrees * Math.PI) / 180;
+    const dLat = radians(lat2 - lat1);
+    const dLng = radians(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(radians(lat1)) * Math.cos(radians(lat2)) * Math.sin(dLng / 2) ** 2;
+    return 6371.0088 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  private sortKey(
+    item: { lot: LotProps; distanceKm?: number },
+    sort: CatalogCursor['sort'],
+  ): string {
+    if (sort === 'price') return item.lot.unitPrice.toString();
+    if (sort === 'distance') return String(item.distanceKm ?? 0);
+    if (sort === 'availability') return String(item.lot.availableFrom.getTime());
+    return item.lot.id;
+  }
+  private isAfterCursor(
+    item: { lot: LotProps; distanceKm?: number },
+    cursor: CatalogCursor,
+  ): boolean {
+    const key = this.sortKey(item, cursor.sort);
+    let compare = 0;
+    if (cursor.sort === 'price')
+      compare = BigInt(key) < BigInt(cursor.key) ? -1 : BigInt(key) > BigInt(cursor.key) ? 1 : 0;
+    else if (cursor.sort === 'distance' || cursor.sort === 'availability')
+      compare = Number(key) - Number(cursor.key);
+    else return item.lot.id.localeCompare(cursor.id) < 0;
+    return compare > 0 || (compare === 0 && item.lot.id.localeCompare(cursor.id) > 0);
   }
 }
