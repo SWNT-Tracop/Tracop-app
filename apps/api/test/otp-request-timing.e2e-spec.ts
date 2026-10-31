@@ -129,17 +129,16 @@ describe('OTP request timing', () => {
     await linkChannel(linkedPhone, 901001);
     await registerUser(unlinkedPhone, unlinkedDeviceId);
 
+    // The send gate is still closed when the responses arrive below, so a
+    // resolved response proves the request finished before the send resolved.
     sender.sendStarted = false;
 
-    const t0 = Date.now();
     const linked = await request(app.getHttpServer())
       .post('/auth/otp/request')
       .send({ phone: linkedPhone })
       .expect(201);
-    const linkedDuration = Date.now() - t0;
 
     expect(linked.body).toEqual({ message: expect.any(String), botLink: expect.any(String) });
-    expect(linkedDuration).toBeLessThan(500);
 
     expect(sender.sendStarted).toBe(true);
     sender.release();
@@ -148,15 +147,12 @@ describe('OTP request timing', () => {
 
     sender.sendStarted = false;
 
-    const t1 = Date.now();
     const unlinked = await request(app.getHttpServer())
       .post('/auth/otp/request')
       .send({ phone: unlinkedPhone })
       .expect(201);
-    const unlinkedDuration = Date.now() - t1;
 
     expect(unlinked.body).toEqual(linked.body);
-    expect(unlinkedDuration).toBeLessThan(500);
     expect(sender.sendStarted).toBe(true);
     sender.release();
     await (app.get(BACKGROUND_DISPATCHER) as BackgroundDispatcher).flush();
