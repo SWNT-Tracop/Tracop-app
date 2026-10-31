@@ -212,4 +212,41 @@ describe('catalog application', () => {
       expect(second.items.map(({ lot }) => lot.id)).not.toContain(first.items[0]!.lot.id);
     }
   });
+
+  it('expires only lots with available_until strictly before now', async () => {
+    const atBoundary = {
+      ...lotInput,
+      providerId: actor.sub,
+      id: '018f47a2-8b45-7cc2-9a1e-123456789ab4',
+      status: 'published' as const,
+      version: 2,
+      availableUntil: clock.now(),
+    };
+    const elapsed = {
+      ...atBoundary,
+      id: '018f47a2-8b45-7cc2-9a1e-123456789ab5',
+      availableUntil: new Date(clock.now().getTime() - 1),
+    };
+    lots.set(atBoundary.id, atBoundary);
+    lots.set(elapsed.id, elapsed);
+    expect(await service.expireLots()).toBe(1);
+    expect(lots.get(atBoundary.id)?.status).toBe('published');
+    expect(lots.get(elapsed.id)?.status).toBe('expired');
+    expect(emitted.map(({ type }) => type)).toEqual(['LotExpired']);
+  });
+
+  it('deduplicates concurrent same-owner creation and emits one event for concurrent publication', async () => {
+    const [createdA, createdB] = await Promise.all([
+      service.createLot(actor, lotInput),
+      service.createLot(actor, lotInput),
+    ]);
+    expect(createdA.id).toBe(createdB.id);
+    const results = await Promise.allSettled([
+      service.publishLot(actor, lotInput.id, 1),
+      service.publishLot(actor, lotInput.id, 1),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(emitted.filter((event) => event.type === 'LotPublished')).toHaveLength(1);
+  });
 });

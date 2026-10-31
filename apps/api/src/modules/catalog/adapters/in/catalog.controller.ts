@@ -26,6 +26,7 @@ import { APP_ENVIRONMENT } from '../../../../shared/infra/tokens.js';
 import type { AppEnvironment } from '../../../../shared/infra/env.js';
 import { CatalogService } from '../../application/catalog-service.js';
 import { PROVIDER_DIRECTORY, type ProviderDirectoryPort } from '../../ports/catalog-ports.js';
+import { serializeLotForViewer } from './lot-response.js';
 
 @ApiTags('catalog')
 @ApiBearerAuth()
@@ -215,16 +216,7 @@ export class LotsController {
       .then((map) => [map.get(lot.providerId)]);
     if (!provider)
       throw new DomainError('Perfil público del proveedor no encontrado.', 'not_found');
-    const { locationLat, locationLng, ...publicFields } = lot;
-    return {
-      ...publicFields,
-      unitPrice: lot.unitPrice.toString(),
-      provider,
-      ...(viewerId === lot.providerId ? { locationLat, locationLng } : {}),
-      ...(viewerId !== lot.providerId && distanceKm !== undefined
-        ? { distanceKm: Math.max(1, Math.round(distanceKm)) }
-        : {}),
-    };
+    return serializeLotForViewer(lot, provider, viewerId, distanceKm);
   }
 
   private encodeCursor(payload: unknown): string {

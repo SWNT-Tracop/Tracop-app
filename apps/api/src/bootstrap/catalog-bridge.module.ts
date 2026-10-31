@@ -3,7 +3,7 @@ import { IdentityModule, ProviderProfileService } from '../modules/identity/inde
 import { PROVIDER_PROFILE_SERVICE } from '../modules/identity/index.js';
 import { PROVIDER_DIRECTORY, type ProviderDirectoryPort } from '../modules/catalog/index.js';
 
-class IdentityProviderDirectoryAdapter implements ProviderDirectoryPort {
+export class IdentityProviderDirectoryAdapter implements ProviderDirectoryPort {
   constructor(private readonly profiles: ProviderProfileService) {}
   getProviderPublicSummaries(ids: readonly string[]) {
     return this.profiles.getProviderPublicSummaries(ids);
