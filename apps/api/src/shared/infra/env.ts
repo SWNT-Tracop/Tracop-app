@@ -19,6 +19,7 @@ const envSchema = z.object({
   RATE_LIMIT_HMAC_SECRET: z.string().min(32),
   PRIVACY_POLICY_VERSION: z.string().min(1).default('v0-draft'),
   ALLOWED_COUNTRY_CODES: z.string().default('57'),
+  SUPPORTED_LOCALES: z.string().default('es-CO,en'),
   TRUST_PROXY: z.union([booleanFromString, z.coerce.number().int().nonnegative()]).default(false),
   OTP_LENGTH: z.coerce.number().int().min(4).max(10).default(6),
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
@@ -83,6 +84,7 @@ const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
 export type AppEnvironment = z.infer<typeof envSchema> & {
   TELEGRAM_BOT_USERNAME: string;
   allowedCountryCodes: readonly string[];
+  supportedLocales: readonly string[];
   telegramBotLink: string;
 };
 
@@ -108,10 +110,21 @@ export const loadAppEnvironment = (cwd = process.cwd()): AppEnvironment => {
     );
   }
 
+  const supportedLocales = parsed.SUPPORTED_LOCALES.split(',')
+    .map((locale) => locale.trim())
+    .filter(Boolean);
+  if (
+    supportedLocales.length === 0 ||
+    supportedLocales.some((locale) => !/^[a-z]{2}(-[A-Z]{2})?$/.test(locale))
+  ) {
+    throw new Error('SUPPORTED_LOCALES must be a comma-separated list of locales like es-CO.');
+  }
+
   return {
     ...parsed,
     TELEGRAM_BOT_USERNAME: telegramBotUsername,
     allowedCountryCodes,
+    supportedLocales,
     telegramBotLink: `https://t.me/${telegramBotUsername}?start=link`,
   };
 };

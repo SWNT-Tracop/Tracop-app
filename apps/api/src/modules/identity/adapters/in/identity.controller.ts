@@ -44,7 +44,7 @@ export class IdentityController {
           type: 'string',
           enum: ['producer', 'supplier', 'buyer', 'carrier', 'operator', 'finance', 'admin'],
         },
-        fullName: { type: 'string' },
+        fullName: { type: 'string', minLength: 2, maxLength: 160 },
         locale: { type: 'string' },
         deviceId: { type: 'string', format: 'uuid' },
         platform: { type: 'string', enum: ['ios', 'android', 'web', 'other'] },
@@ -174,7 +174,10 @@ export class IdentityController {
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { fullName: { type: 'string' }, locale: { type: 'string' } },
+      properties: {
+        fullName: { type: 'string', minLength: 2, maxLength: 160 },
+        locale: { type: 'string' },
+      },
       additionalProperties: false,
     },
   })

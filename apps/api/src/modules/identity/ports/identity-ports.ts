@@ -132,6 +132,7 @@ export interface IdentitySettings {
   PRIVACY_POLICY_VERSION: string;
   TELEGRAM_BOT_USERNAME: string;
   allowedCountryCodes: readonly string[];
+  supportedLocales: readonly string[];
   OTP_LENGTH: number;
   OTP_TTL_SECONDS: number;
   OTP_MAX_ATTEMPTS: number;
