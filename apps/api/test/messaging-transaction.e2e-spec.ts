@@ -4,7 +4,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { Pool } from 'pg';
 import { AppModule } from '../src/bootstrap/app.module.js';
-import { describePostgres } from './postgres-suite.js';
+import { describePostgres, resetPostgresFixtures } from './postgres-suite.js';
 import { IdentityChannelAdapter } from '../src/bootstrap/identity-channel.adapter.js';
 import {
   IDENTITY_CHANNEL_APPLICATION,
@@ -68,6 +68,7 @@ describePostgres('messaging transaction boundaries', () => {
     app = moduleRef.createNestApplication();
     await app.listen(0, '127.0.0.1');
     pool = app.get(DATABASE_POOL) as Pool;
+    await resetPostgresFixtures(pool);
     control = app.get(CHANNEL_IDENTITY_PORT) as ControllableIdentityAdapter;
 
     await request(app.getHttpServer())
