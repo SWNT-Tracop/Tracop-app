@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { registerUserSchema, updateMeSchema } from '../src/schemas/identity.js';
+import {
+  registerUserSchema,
+  updateMeSchema,
+  upsertProviderProfileSchema,
+} from '../src/schemas/identity.js';
 
 describe('identity contracts', () => {
   it('requires accepted consent and a consent version when registering', () => {
@@ -21,5 +25,21 @@ describe('identity contracts', () => {
   it('does not allow protected identity fields in profile updates', () => {
     expect(updateMeSchema.safeParse({ fullName: 'Nombre Nuevo' }).success).toBe(true);
     expect(updateMeSchema.safeParse({ role: 'admin' }).success).toBe(false);
+  });
+
+  it('validates provider profile coordinates and rejects unknown fields', () => {
+    const input = {
+      displayName: 'Finca',
+      municipality: 'Tunja',
+      department: 'Boyacá',
+      lat: 5.5,
+      lng: -73.4,
+      description: '',
+    };
+    expect(upsertProviderProfileSchema.safeParse(input).success).toBe(true);
+    expect(upsertProviderProfileSchema.safeParse({ ...input, lat: 20 }).success).toBe(false);
+    expect(upsertProviderProfileSchema.safeParse({ ...input, phone: '3001234567' }).success).toBe(
+      false,
+    );
   });
 });

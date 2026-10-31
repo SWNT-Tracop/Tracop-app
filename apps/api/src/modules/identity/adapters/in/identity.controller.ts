@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import {
@@ -6,6 +6,7 @@ import {
   registerUserSchema,
   requestOtpSchema,
   updateMeSchema,
+  upsertProviderProfileSchema,
   verifyOtpSchema,
 } from '@tracop/contracts';
 import type { IdentityApplicationService } from '../../application/identity-application-service.js';
@@ -14,6 +15,8 @@ import { AuthGuard, type AuthenticatedRequest } from '../../../../shared/auth/in
 import { Public, Roles } from './auth-metadata.js';
 import type { UserRole } from '../../domain/user.js';
 import { DomainError } from '../../../../shared/kernel/domain-error.js';
+import { PROVIDER_PROFILE_SERVICE } from '../../ports/tokens.js';
+import type { ProviderProfileService } from '../../application/provider-profile-service.js';
 
 const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: DomainError }): T => {
   if (!result.ok) throw result.error;
@@ -29,6 +32,7 @@ const clientIp = (request: Request): string =>
 export class IdentityController {
   constructor(
     @Inject(IDENTITY_APPLICATION) private readonly identity: IdentityApplicationService,
+    @Inject(PROVIDER_PROFILE_SERVICE) private readonly providerProfiles: ProviderProfileService,
   ) {}
 
   @Public()
@@ -189,5 +193,29 @@ export class IdentityController {
         ...(input.locale !== undefined ? { locale: input.locale } : {}),
       }),
     );
+  }
+
+  @Put('me/provider-profile')
+  @ApiBearerAuth()
+  @Roles('producer', 'supplier')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['displayName', 'municipality', 'department', 'lat', 'lng', 'description'],
+      properties: {
+        displayName: { type: 'string', minLength: 2, maxLength: 100 },
+        municipality: { type: 'string', minLength: 1, maxLength: 100 },
+        department: { type: 'string', minLength: 1, maxLength: 100 },
+        lat: { type: 'number', minimum: -4.3, maximum: 13.7 },
+        lng: { type: 'number', minimum: -81.8, maximum: -66.9 },
+        description: { type: 'string', maxLength: 1000 },
+      },
+      additionalProperties: false,
+    },
+  })
+  async upsertProviderProfile(@Body() body: unknown, @Req() request: AuthenticatedRequest) {
+    const input = upsertProviderProfileSchema.parse(body);
+    await this.providerProfiles.upsertProviderProfile(request.identity!.sub, input);
+    return { status: 'saved' as const };
   }
 }

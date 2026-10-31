@@ -5,12 +5,18 @@ import type { OtpPurpose, OtpProps } from '../domain/otp.js';
 import type { SessionProps } from '../domain/session.js';
 import type { PhoneNumber } from '../domain/phone-number.js';
 import type { UserProps } from '../domain/user.js';
+import type { ProviderProfileProps, ProviderPublicSummary } from '../domain/provider-profile.js';
 
 export interface UserRepository {
   findByPhone(phone: PhoneNumber): Promise<UserProps | null>;
   findById(id: string): Promise<UserProps | null>;
   create(user: UserProps): Promise<void>;
   update(user: UserProps): Promise<void>;
+}
+
+export interface ProviderProfileRepository {
+  upsert(profile: ProviderProfileProps): Promise<void>;
+  findPublicSummaries(ids: readonly string[]): Promise<ReadonlyMap<string, ProviderPublicSummary>>;
 }
 
 export interface OtpRepository {
