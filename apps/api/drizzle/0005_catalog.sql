@@ -1,5 +1,3 @@
-CREATE SCHEMA catalog;
-
 CREATE TABLE catalog.categories (
   id uuid PRIMARY KEY,
   name text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 100),
