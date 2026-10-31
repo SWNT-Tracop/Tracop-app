@@ -8,10 +8,20 @@ const statePath = join(tmpdir(), 'tracop-identity-test-container.json');
 
 module.exports = async () => {
   let container;
-  let pool;
   try {
     container = await new PostgreSqlContainer('postgres:16-alpine').start();
-    pool = new Pool({ connectionString: container.getConnectionUri() });
+  } catch (error) {
+    const requireDocker = process.env.CI === 'true' || process.env.REQUIRE_DOCKER === '1';
+    if (requireDocker) throw error;
+    console.warn(
+      `Skipping PostgreSQL/Testcontainers suites: Docker unavailable (${error.message})`,
+    );
+    await writeFile(statePath, JSON.stringify({ available: false }));
+    return;
+  }
+
+  const pool = new Pool({ connectionString: container.getConnectionUri() });
+  try {
     await pool.query('CREATE SCHEMA IF NOT EXISTS shared');
     await pool.query(`CREATE TABLE IF NOT EXISTS shared.schema_migrations (
       id text PRIMARY KEY,
@@ -37,14 +47,9 @@ module.exports = async () => {
       }),
     );
   } catch (error) {
-    if (container) await container.stop().catch(() => undefined);
-    const requireDocker = process.env.CI === 'true' || process.env.REQUIRE_DOCKER === '1';
-    if (requireDocker) throw error;
-    console.warn(
-      `Skipping PostgreSQL/Testcontainers suites: Docker unavailable (${error.message})`,
-    );
-    await writeFile(statePath, JSON.stringify({ available: false }));
+    await container.stop().catch(() => undefined);
+    throw error;
   } finally {
-    if (pool) await pool.end();
+    await pool.end();
   }
 };
