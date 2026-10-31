@@ -1,16 +1,9 @@
 import { DomainError } from '../../../shared/kernel/domain-error.js';
+import { userRoleSchema, type UserRole } from '@tracop/contracts';
 import { PhoneNumber } from './phone-number.js';
 
-export const USER_ROLES = [
-  'producer',
-  'supplier',
-  'buyer',
-  'carrier',
-  'operator',
-  'finance',
-  'admin',
-] as const;
-export type UserRole = (typeof USER_ROLES)[number];
+export const USER_ROLES = userRoleSchema.options;
+export type { UserRole };
 export const SELF_REGISTERABLE_ROLES: readonly UserRole[] = [
   'producer',
   'supplier',

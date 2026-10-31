@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const identityRoleSchema = z.enum([
+export const userRoleSchema = z.enum([
   'producer',
   'supplier',
   'buyer',
@@ -9,6 +9,8 @@ export const identityRoleSchema = z.enum([
   'finance',
   'admin',
 ]);
+export const identityRoleSchema = userRoleSchema;
+export type UserRole = z.infer<typeof userRoleSchema>;
 export const devicePlatformSchema = z.enum(['ios', 'android', 'web', 'other']);
 
 // Kept in sync with the domain rules (FULL_NAME_MIN/MAX_LENGTH); the API edge
