@@ -83,7 +83,7 @@ describe('OTP request timing', () => {
       .compile();
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureHttp(app);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     expect(app.get(OTP_SENDER)).toBeInstanceOf(ControlledTelegramOtpSender);
   });
 

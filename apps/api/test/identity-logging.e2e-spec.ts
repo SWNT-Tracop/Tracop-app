@@ -34,7 +34,7 @@ describe('identity logging redaction across the full flow', () => {
       .compile();
     app = moduleRef.createNestApplication();
     app.useLogger(new NestPinoLogger(app.get(APP_LOGGER)));
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     otpSender = app.get(OTP_SENDER) as InMemoryOtpSender;
   });
 

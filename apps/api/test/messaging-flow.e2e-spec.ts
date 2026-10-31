@@ -69,7 +69,7 @@ describe('Telegram webhook flow', () => {
       .compile();
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureHttp(app);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     pool = app.get(DATABASE_POOL) as Pool;
     expect(app.get(OTP_SENDER)).toBeInstanceOf(TelegramOtpSender);
   });

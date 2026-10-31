@@ -65,7 +65,7 @@ describe('messaging transaction boundaries', () => {
       })
       .compile();
     app = moduleRef.createNestApplication();
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     pool = app.get(DATABASE_POOL) as Pool;
     control = app.get(CHANNEL_IDENTITY_PORT) as ControllableIdentityAdapter;
 

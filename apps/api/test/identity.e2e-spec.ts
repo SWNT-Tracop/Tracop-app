@@ -45,7 +45,7 @@ describe('identity authentication flow (PostgreSQL Testcontainers)', () => {
     pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     otpSender = app.get(OTP_SENDER) as InMemoryOtpSender;
   });
 
