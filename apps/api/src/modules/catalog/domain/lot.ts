@@ -50,6 +50,10 @@ export class Lot {
   private constructor(readonly props: LotProps) {}
   private readonly pendingEvents: LotEvent[] = [];
 
+  static reconstitute(props: LotProps): Lot {
+    return new Lot({ ...props });
+  }
+
   static create(props: LotProps, productUnit: ProductUnit, now: Date, maxHorizonDays: number): Lot {
     if (!(props.quantity > 0) || !Number.isFinite(props.quantity))
       throw new DomainError('La cantidad debe ser positiva.', 'invalid_quantity');
