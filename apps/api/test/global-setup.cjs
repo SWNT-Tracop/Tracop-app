@@ -38,8 +38,58 @@ module.exports = async () => {
       '0005_catalog.sql',
       '0006_lot_photos.sql',
     ]) {
+      if (filename === '0006_lot_photos.sql') {
+        const timestamp = new Date();
+        await pool.query(
+          `INSERT INTO catalog.categories (id, name, parent_id, depth, created_at, updated_at)
+           VALUES ('0190f47a-8b45-7cc2-9a1e-000000000001', 'Synthetic migration fixture', NULL, 1, $1, $1)`,
+          [timestamp],
+        );
+        await pool.query(
+          `INSERT INTO catalog.products (id, category_id, name, search_text, unit, attributes, created_at, updated_at)
+           VALUES ('0190f47a-8b45-7cc2-9a1e-000000000002', '0190f47a-8b45-7cc2-9a1e-000000000001',
+                   'Synthetic migration product', 'synthetic migration product', 'kg', '{}', $1, $1)`,
+          [timestamp],
+        );
+        await pool.query(
+          `INSERT INTO catalog.lots
+           (id, provider_id, product_id, quantity, unit, unit_price, available_from, available_until,
+            location_lat, location_lng, status, version, created_at, updated_at)
+           VALUES ('0190f47a-8b45-7cc2-9a1e-000000000003', '0190f47a-8b45-7cc2-9a1e-000000000004',
+                   '0190f47a-8b45-7cc2-9a1e-000000000002', 1, 'kg', 1, $1, $1, 5, -73, 'draft', 1, $1, $1)`,
+          [timestamp],
+        );
+        await pool.query(
+          `INSERT INTO catalog.lot_photos (id, lot_id, media_ref, created_at)
+           VALUES ('0190f47a-8b45-7cc2-9a1e-000000000005', '0190f47a-8b45-7cc2-9a1e-000000000003',
+                   'incoming/legacy-photo', $1)`,
+          [timestamp],
+        );
+      }
       await pool.query(await readFile(resolve('drizzle', filename), 'utf8'));
       await pool.query('INSERT INTO shared.schema_migrations (id) VALUES ($1)', [filename]);
+      if (filename === '0006_lot_photos.sql') {
+        const backfill = await pool.query(
+          `SELECT expires_at < now() AS expired FROM catalog.lot_photos
+           WHERE id = '0190f47a-8b45-7cc2-9a1e-000000000005'`,
+        );
+        if (backfill.rows[0]?.expired !== true) {
+          throw new Error('Migration 0006 must backfill legacy photos as expired.');
+        }
+        await pool.query(
+          `DELETE FROM catalog.lot_photos WHERE id = '0190f47a-8b45-7cc2-9a1e-000000000005'`,
+        );
+        await pool.query(
+          `DELETE FROM catalog.lots WHERE id = '0190f47a-8b45-7cc2-9a1e-000000000003'`,
+        );
+        await pool.query(
+          `DELETE FROM catalog.products WHERE id = '0190f47a-8b45-7cc2-9a1e-000000000002'`,
+        );
+        await pool.query(
+          `DELETE FROM catalog.categories WHERE id = '0190f47a-8b45-7cc2-9a1e-000000000001'`,
+        );
+        console.log('Verified migration 0006 expires pre-existing lot photos.');
+      }
     }
     await writeFile(
       statePath,

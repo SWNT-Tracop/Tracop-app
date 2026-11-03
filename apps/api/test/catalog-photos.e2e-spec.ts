@@ -228,6 +228,9 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
     const producer = await register('producer');
     const lotId = await createPublishedLot(producer.token, operator);
     const prepared = await prepareUpload(producer.token, lotId);
+    expect(prepared.response.body.uploadPolicy.fields.key).toMatch(/^incoming\//);
+    expect(prepared.response.body).not.toHaveProperty('mediaRef');
+    expect(prepared.response.body).not.toHaveProperty('objectKey');
     await uploadSyntheticPhoto(prepared.response.body.uploadPolicy);
 
     const results = await Promise.all([
@@ -304,6 +307,11 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
     expect(listedLot.photos).toHaveLength(1);
     expect(listedLot.photos[0].url).toContain('photos/');
     expect(listedLot.photos[0].url).not.toContain('incoming/');
+    for (const photo of listedLot.photos) {
+      expect(Object.keys(photo).sort()).toEqual(['id', 'position', 'url']);
+      expect(photo).not.toHaveProperty('mediaRef');
+      expect(photo).not.toHaveProperty('objectKey');
+    }
 
     const before = await request(app.getHttpServer())
       .get(`/lots/${lotId}`)
@@ -312,6 +320,12 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
     expect(before.body.photos.map(({ position }: { position: number }) => position)).toEqual([
       1, 2, 3,
     ]);
+    expect(JSON.stringify(before.body.photos)).not.toContain('incoming/');
+    for (const photo of before.body.photos) {
+      expect(Object.keys(photo).sort()).toEqual(['id', 'position', 'url']);
+      expect(photo).not.toHaveProperty('mediaRef');
+      expect(photo).not.toHaveProperty('objectKey');
+    }
 
     const reversed = [...photos].reverse();
     await request(app.getHttpServer())

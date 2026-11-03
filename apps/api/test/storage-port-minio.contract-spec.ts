@@ -7,6 +7,7 @@ import { storagePortContract } from './support/storage-port-contract.js';
 
 let storage: S3StorageAdapter;
 let container: Awaited<ReturnType<MinioContainer['start']>> | undefined;
+let publicEndpoint = '';
 const describeMinio =
   process.env.TRACOP_TESTCONTAINER_AVAILABLE === 'true' ? describe : describe.skip;
 
@@ -17,9 +18,11 @@ describeMinio('S3StorageAdapter with MinIO Testcontainers', () => {
       .withUsername('synthetic-root')
       .withPassword('synthetic-root-password')
       .start();
-    const endpoint = container.getConnectionUrl();
+    publicEndpoint = container.getConnectionUrl();
+    const internalEndpoint = new URL(publicEndpoint);
+    internalEndpoint.hostname = '127.0.0.1';
     const client = new S3Client({
-      endpoint,
+      endpoint: internalEndpoint.toString().replace(/\/$/, ''),
       region: 'us-east-1',
       forcePathStyle: true,
       requestChecksumCalculation: 'WHEN_REQUIRED',
@@ -32,8 +35,8 @@ describeMinio('S3StorageAdapter with MinIO Testcontainers', () => {
     const base = loadAppEnvironment('/tmp/tracop-no-env');
     const env = {
       ...base,
-      S3_ENDPOINT: endpoint,
-      S3_PUBLIC_ENDPOINT: endpoint,
+      S3_ENDPOINT: internalEndpoint.toString().replace(/\/$/, ''),
+      S3_PUBLIC_ENDPOINT: publicEndpoint,
       S3_BUCKET: 'tracop-test-bucket',
       S3_REGION: 'us-east-1',
       S3_API_ACCESS_KEY: container.getUsername(),
@@ -51,6 +54,8 @@ describeMinio('S3StorageAdapter with MinIO Testcontainers', () => {
     return {
       storage,
       keyPrefix,
+      expectedSignedEndpoint: publicEndpoint,
+      verifySignedPostPolicy: true,
       cleanup: async () => {
         for await (const object of storage.listObjects(keyPrefix)) {
           await storage.deleteObject(object.key);
