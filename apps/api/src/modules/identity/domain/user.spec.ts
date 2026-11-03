@@ -1,5 +1,5 @@
 import { PhoneNumber } from './phone-number.js';
-import { User } from './user.js';
+import { User, type UserProps } from './user.js';
 
 const phone = PhoneNumber.parse('3001234567');
 if (!phone.ok) throw phone.error;
@@ -132,8 +132,77 @@ describe('User', () => {
       },
       now,
     );
-    user.updateProfile({ locale: 'en-US' }, now);
-    expect(user.props.locale).toBe('en-US');
+    user.updateProfile({ locale: 'en' }, now);
+    expect(user.props.locale).toBe('en');
     expect(user.props.fullName).toBe('Test');
+  });
+
+  describe('profile validation', () => {
+    const validProps: Omit<UserProps, 'status' | 'phoneVerifiedAt' | 'updatedAt'> = {
+      id: 'user-1',
+      role: 'buyer',
+      phone: phone.value,
+      fullName: 'Test',
+      locale: 'es-CO',
+      createdAt: now,
+    };
+
+    it('rejects registration when locale is unsupported', () => {
+      expect(() =>
+        User.register({ ...validProps, locale: 'fr' }, now, {
+          supportedLocales: ['es-CO', 'en'],
+        }),
+      ).toThrow('no soportado');
+    });
+
+    it('rejects registration when full name is too short', () => {
+      expect(() =>
+        User.register({ ...validProps, fullName: 'T' }, now, {
+          supportedLocales: ['es-CO', 'en'],
+        }),
+      ).toThrow('nombre');
+    });
+
+    it('rejects registration when full name exceeds 160 characters', () => {
+      expect(() =>
+        User.register({ ...validProps, fullName: 'A'.repeat(161) }, now, {
+          supportedLocales: ['es-CO', 'en'],
+        }),
+      ).toThrow('nombre');
+    });
+
+    it('rejects registration when full name contains a control character', () => {
+      expect(() =>
+        User.register({ ...validProps, fullName: 'Test\u{0001}Name' }, now, {
+          supportedLocales: ['es-CO', 'en'],
+        }),
+      ).toThrow('control');
+    });
+
+    it('rejects profile update when locale is unsupported', () => {
+      const user = User.register(validProps, now, {
+        supportedLocales: ['es-CO', 'en'],
+      });
+      expect(() => user.updateProfile({ locale: 'fr' }, now)).toThrow('no soportado');
+      expect(user.props.locale).toBe('es-CO');
+    });
+
+    it('rejects profile update when full name contains a control character', () => {
+      const user = User.register(validProps, now, {
+        supportedLocales: ['es-CO', 'en'],
+      });
+      expect(() => user.updateProfile({ fullName: 'T\u{007F}est' }, now)).toThrow('control');
+      expect(user.props.fullName).toBe('Test');
+    });
+
+    it('creates staff accounts respecting the same locale rules', () => {
+      expect(() =>
+        User.createStaff(
+          { ...validProps, role: 'operator', fullName: 'Operador', locale: 'fr' },
+          now,
+          { supportedLocales: ['es-CO', 'en'] },
+        ),
+      ).toThrow('no soportado');
+    });
   });
 });

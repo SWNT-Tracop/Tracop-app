@@ -1,43 +1,29 @@
 import { ForbiddenException, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import {
-  IdentityAuthGuard,
+  AuthGuard,
   ownsResource,
   type AuthenticatedRequest,
-} from '../src/modules/identity/adapters/in/identity-auth.guard.js';
-import { REQUIRED_ROLES, PUBLIC_ROUTE } from '../src/modules/identity/adapters/in/auth-metadata.js';
-import { PhoneNumber } from '../src/modules/identity/domain/phone-number.js';
-import { MemoryTokens, FixedClock } from './support/in-memory-identity.js';
-import type { SessionProps } from '../src/modules/identity/domain/session.js';
-import type { UserProps } from '../src/modules/identity/domain/user.js';
+  type AuthPrincipal,
+  type AccessTokenVerifierPort,
+  REQUIRED_ROLES,
+  PUBLIC_ROUTE,
+} from '../src/shared/auth/index.js';
 
 describe('identity role guard and ownership helper', () => {
   const now = new Date('2026-01-01T00:00:00.000Z');
-  const parsedPhone = PhoneNumber.parse('+573001234567');
-  if (!parsedPhone.ok) throw parsedPhone.error;
-  const user: UserProps = {
-    id: 'user-id',
-    phone: parsedPhone.value,
+  const principal: AuthPrincipal = {
+    sub: 'user-id',
     role: 'buyer',
-    fullName: 'Test',
-    locale: 'es-CO',
-    status: 'active',
-    phoneVerifiedAt: now,
-    createdAt: now,
-    updatedAt: now,
+    sid: 'session-id',
+    did: 'device-id',
+    jti: 'token-id',
+    exp: Math.floor(now.getTime() / 1000) + 60,
   };
-  const session: SessionProps = {
-    id: 'session-id',
-    userId: user.id,
-    deviceId: 'device-id',
-    familyId: 'family-id',
-    refreshHash: 'hash',
-    expiresAt: new Date(now.getTime() + 60_000),
-    createdAt: now,
-    rotatedAt: null,
-    revokedAt: null,
-    revokedReason: null,
-    lastUsedAt: null,
+
+  const verifier: AccessTokenVerifierPort = {
+    verify: async (token) =>
+      token === 'valid' ? { principal } : { principal: null, reason: 'invalid_token' },
   };
 
   const makeContext = (request: AuthenticatedRequest): ExecutionContext =>
@@ -48,42 +34,26 @@ describe('identity role guard and ownership helper', () => {
     }) as unknown as ExecutionContext;
 
   it('rejects an authenticated user whose role is not allowed by @Roles', async () => {
-    const tokens = new MemoryTokens();
-    const accessToken = await tokens.issueAccessToken(user, session.id, session.deviceId, now);
     const reflector = {
       getAllAndOverride: (key: string) =>
         key === PUBLIC_ROUTE ? false : key === REQUIRED_ROLES ? ['admin'] : undefined,
     } as unknown as Reflector;
-    const guard = new IdentityAuthGuard(
-      reflector,
-      tokens,
-      { findById: async () => session } as never,
-      { findById: async () => user } as never,
-      new FixedClock(now),
-    );
+    const guard = new AuthGuard(reflector, verifier);
     const context = makeContext({
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: { authorization: 'Bearer valid' },
     } as AuthenticatedRequest);
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('allows an authenticated user with a matching role and checks resource ownership', async () => {
-    const tokens = new MemoryTokens();
-    const accessToken = await tokens.issueAccessToken(user, session.id, session.deviceId, now);
     const reflector = {
       getAllAndOverride: (key: string) => (key === REQUIRED_ROLES ? ['buyer'] : false),
     } as unknown as Reflector;
-    const request = { headers: { authorization: `Bearer ${accessToken}` } } as AuthenticatedRequest;
-    const guard = new IdentityAuthGuard(
-      reflector,
-      tokens,
-      { findById: async () => session } as never,
-      { findById: async () => user } as never,
-      new FixedClock(now),
-    );
+    const request = { headers: { authorization: 'Bearer valid' } } as AuthenticatedRequest;
+    const guard = new AuthGuard(reflector, verifier);
     expect(await guard.canActivate(makeContext(request))).toBe(true);
-    expect(request.identity?.sub).toBe(user.id);
-    expect(ownsResource(request.identity!, user.id)).toBe(true);
+    expect(request.identity?.sub).toBe(principal.sub);
+    expect(ownsResource(request.identity!, principal.sub)).toBe(true);
     expect(ownsResource(request.identity!, 'another-user')).toBe(false);
   });
 });

@@ -17,6 +17,7 @@ import {
   UNIT_OF_WORK,
 } from './tokens.js';
 import { SystemClock } from './system-clock.js';
+import { InMemorySearchRateLimiter } from './search-rate-limiter.js';
 
 @Global()
 @Module({
@@ -37,6 +38,7 @@ import { SystemClock } from './system-clock.js';
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     SystemClock,
+    InMemorySearchRateLimiter,
     { provide: APP_CLOCK, useExisting: SystemClock },
     ImmediateBackgroundDispatcher,
     { provide: BACKGROUND_DISPATCHER, useExisting: ImmediateBackgroundDispatcher },
@@ -45,6 +47,7 @@ import { SystemClock } from './system-clock.js';
     APP_ENVIRONMENT,
     APP_LOGGER,
     APP_CLOCK,
+    InMemorySearchRateLimiter,
     DATABASE_POOL,
     DatabaseService,
     UNIT_OF_WORK,

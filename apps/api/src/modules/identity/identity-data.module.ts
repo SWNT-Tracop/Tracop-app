@@ -4,6 +4,7 @@ import {
   DrizzleConsentRepository,
   DrizzleDeviceRepository,
   DrizzleOtpRepository,
+  DrizzleProviderProfileRepository,
   DrizzleSessionRepository,
   DrizzleUserRepository,
   PostgresRateLimiter,
@@ -18,6 +19,7 @@ import {
   SESSION_REPOSITORY,
   TOKEN_SERVICE,
   USER_REPOSITORY,
+  PROVIDER_PROFILE_REPOSITORY,
 } from './ports/tokens.js';
 
 @Module({
@@ -27,11 +29,13 @@ import {
     DrizzleSessionRepository,
     DrizzleDeviceRepository,
     DrizzleConsentRepository,
+    DrizzleProviderProfileRepository,
     { provide: USER_REPOSITORY, useExisting: DrizzleUserRepository },
     { provide: OTP_REPOSITORY, useExisting: DrizzleOtpRepository },
     { provide: SESSION_REPOSITORY, useExisting: DrizzleSessionRepository },
     { provide: DEVICE_REPOSITORY, useExisting: DrizzleDeviceRepository },
     { provide: CONSENT_REPOSITORY, useExisting: DrizzleConsentRepository },
+    { provide: PROVIDER_PROFILE_REPOSITORY, useExisting: DrizzleProviderProfileRepository },
     HmacPasswordlessHasher,
     { provide: PASSWORDLESS_HASHER, useExisting: HmacPasswordlessHasher },
     { provide: IDENTITY_HASHER, useExisting: HmacPasswordlessHasher },
@@ -46,6 +50,7 @@ import {
     SESSION_REPOSITORY,
     DEVICE_REPOSITORY,
     CONSENT_REPOSITORY,
+    PROVIDER_PROFILE_REPOSITORY,
     PASSWORDLESS_HASHER,
     IDENTITY_HASHER,
     TOKEN_SERVICE,

@@ -257,6 +257,7 @@ export const memorySettings: IdentitySettings = {
   PRIVACY_POLICY_VERSION: 'v0-draft',
   TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
   allowedCountryCodes: ['57'],
+  supportedLocales: ['es-CO', 'en'],
   OTP_LENGTH: 6,
   OTP_TTL_SECONDS: 300,
   OTP_MAX_ATTEMPTS: 5,

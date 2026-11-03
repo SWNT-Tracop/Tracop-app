@@ -286,7 +286,7 @@ type InboundMessage = {
 | Módulo          | Responsabilidad                                                                            | Publica eventos                                                                      | Offline                 |
 | --------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ----------------------- |
 | `identity`      | Registro, perfiles, roles, vinculación de canales, OTP, sesiones                           | `UserRegistered`, `ChannelLinked`                                                    | Parcial                 |
-| `catalog`       | Productos, categorías, lotes, disponibilidad, búsqueda y filtros                           | `LotPublished`, `LotReserved`, `LotExpired`                                          | Sí                      |
+| `catalog`       | Productos, categorías, lotes, disponibilidad, búsqueda y filtros                           | `LotPublished`, `LotReserved`, `LotExpired`, `LotCancelled`                          | Sí                      |
 | `ordering`      | Solicitudes, cotizaciones, pedidos y estados                                               | `OrderRequested`, `OrderQuoted`, `OrderAccepted`, `OrderDelivered`, `OrderCancelled` | Sí (eventos pendientes) |
 | `logistics`     | Agrupar lotes, camiones, rutas, check-ins, incidencias de transporte                       | `TripPlanned`, `PickupConfirmed`, `DeliveryConfirmed`                                | Sí (check-ins locales)  |
 | `payments`      | Cotización de costos, comprobantes, verificación, ledger, liquidación                      | `PaymentProofUploaded`, `PaymentVerified`, `SettlementIssued`, `PaymentDisputed`     | No                      |
@@ -366,10 +366,12 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 
 **catalog**
 
-- `categories` (id, name, parent_id)
-- `products` (id, category_id, name, unit, attributes jsonb)
-- `lots` (id, provider_id, product_id, quantity, unit, unit_price, quality_grade, available_from, available_until, location_lat, location_lng, status, version)
-- `lot_photos` (id, lot_id, media_ref)
+- `categories` (id uuid, name text, parent_id uuid nullable, depth integer, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, deleted_at timestamptz nullable). `depth` está entre 1 y 3; nombre no vacío y máximo 100 caracteres.
+- `products` (id uuid, category_id uuid, name text, search_text text, unit text, attributes jsonb, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, deleted_at timestamptz nullable). Nombre no vacío y máximo 120 caracteres; atributos es un objeto. `search_text` contiene el nombre normalizado para búsquedas.
+- `lots` (id uuid, provider_id uuid, product_id uuid, quantity numeric(12,3), unit text, unit_price bigint, quality_grade text nullable, available_from timestamptz, available_until timestamptz, location_lat double precision, location_lng double precision, status text, version integer, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, deleted_at timestamptz nullable). La cantidad del dominio se representa como `quantityMilli: bigint` (milésimas) y se convierte a/desde `numeric(12,3)` al persistir. El precio unitario es entero positivo en COP; la unidad del lote debe coincidir con la del producto. Coordenadas se restringen a los límites de Colombia; `quality_grade` admite texto opcional de hasta 100 caracteres sin vocabulario cerrado.
+- `lot_photos` (id uuid, lot_id uuid, media_ref text, created_at timestamptz NOT NULL).
+
+Unidades actualmente aceptadas por el catálogo: `kg`, `g`, `lb`, `und`, `docena`, `arroba`, `quintal`, `caja`, `mano`, `bulto`. Esta lista es **provisional**; el vocabulario de unidades y el vocabulario para `quality_grade` siguen pendientes de decisión (§23).
 
 **ordering**
 
@@ -441,7 +443,7 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 
 Las transiciones se validan en el **dominio**; un estado inválido lanza error de dominio, nunca se "corrige" en silencio.
 
-**Lote:** `draft → published → reserved → sold_out` · `published → expired` · `published|reserved → cancelled`
+**Lote:** `draft → published → reserved → sold_out` · `published → expired` · `draft|published|reserved → cancelled`
 
 **Pedido:**
 `draft → requested → quoted → accepted → payment_pending → paid → pickup_scheduled → in_transit → delivered → closed`
@@ -743,6 +745,9 @@ MAPS_API_KEY=
 ---
 
 ## 23. Decisiones abiertas (no asumir; preguntar)
+
+- Vocabulario definitivo de unidades de producto/lote. La implementación actual acepta provisionalmente: `kg`, `g`, `lb`, `und`, `docena`, `arroba`, `quintal`, `caja`, `mano`, `bulto`.
+- Vocabulario controlado para `quality_grade`. Actualmente es texto opcional de hasta 100 caracteres; no hay lista cerrada implementada.
 
 1. **Porcentaje de comisión** y si se aplica por categoría o plan.
 2. **Quién asume la comisión** (propuesta por defecto: se descuenta al productor).

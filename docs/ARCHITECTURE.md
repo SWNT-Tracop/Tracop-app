@@ -6,6 +6,22 @@ TRACOP adopta un monolito modular con arquitectura hexagonal: los módulos encap
 
 `src/shared/kernel/` contiene elementos compartidos que son parte del lenguaje del dominio y pueden usarse desde `domain`: `Result`, errores base, la interfaz `Clock` e IDs UUID v7. `src/shared/infra/` contiene implementaciones y detalles de infraestructura —validación de entorno, `SystemClock`, Drizzle/PostgreSQL, `UnitOfWork`, outbox, logging Pino y manejo HTTP— y no puede importarse desde el dominio.
 
+`src/shared/auth/` expone `AuthGuard`, `Roles` y los tipos de identidad autenticada. Los controllers de catálogo los usan para exigir sesión en rutas de catálogo/lotes y restringir operaciones de gestión o publicación a los roles correspondientes. El guard comprueba JWT y sesión con el módulo `identity`; `catalog` no implementa autenticación propia.
+
+## Catálogo
+
+El módulo `catalog` posee categorías, productos y lotes. `CatalogController` gestiona categorías/productos; `LotsController` crea y mantiene lotes, publica/cancela y busca lotes visibles. `CatalogService` contiene las reglas de categoría, producto, lote y filtros; Drizzle persiste en el schema `catalog`. Las mutaciones de estado del lote generan eventos del dominio y se escriben a través del outbox compartido.
+
+Las consultas de lotes incluyen filtros de categoría/producto, texto, precio, disponibilidad y ubicación. `search_text` guarda el nombre del producto normalizado (minúsculas y sin diacríticos); cada token de la consulta debe aparecer en ese texto. La búsqueda produce una página y un cursor `nextCursor`. El cursor transporta versión, criterio de ordenación, clave de ordenación e ID como desempate; el controller lo cifra y autentica con AES-256-GCM usando una clave derivada de `JWT_SECRET`, y rechaza cursores inválidos o que no correspondan al orden pedido. El servicio ordena los resultados y avanza después de la tupla de cursor (keyset); actualmente carga y filtra el conjunto visible antes de recortar cada página, no es paginación SQL por cursor.
+
+La respuesta de lote elimina siempre `providerId`, latitud y longitud del objeto público; las coordenadas solo se añaden cuando el viewer es el proveedor propietario. El cálculo de distancia puede incluir `distanceKm`, sin revelar coordenadas del lote. La búsqueda aplica un límite por usuario con `InMemorySearchRateLimiter`, contadores en proceso y ventana fija; sus umbrales y radio máximo vienen de `CATALOG_SEARCH_RATE_LIMIT`, `CATALOG_SEARCH_RATE_WINDOW_SECONDS` y `CATALOG_SEARCH_RADIUS_MAX_KM`.
+
+### `ProviderDirectoryPort`
+
+`LotsController` usa `ProviderDirectoryPort` para enriquecer respuestas con el resumen público del proveedor. El catálogo define el puerto en su superficie pública; `bootstrap/catalog-bridge.module.ts` implementa `IdentityProviderDirectoryAdapter`, que delega a `ProviderProfileService` expuesto por `identity/index.ts`. Así, el catálogo no importa internals ni consulta tablas de identidad.
+
+La decisión del núcleo de catálogo está en [ADR-010](adr/ADR-010.md).
+
 ## Messaging (Telegram / WhatsApp)
 
 `messaging` implementa la recepción y envío de mensajes por canal de mensajería. El dominio y la aplicación no conocen Telegram ni WhatsApp; operan sobre `InboundMessage` / `OutboundMessage` definidos en `domain/messaging.ts`.
@@ -124,8 +140,9 @@ Cada módulo es dueño de sus datos. La migración inicial creó schemas para `i
 
 | Archivo                          | Qué conecta                                                                                                                                           |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule`.                                        |
+| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule` y el puente del catálogo.               |
 | `identity-bridge.module.ts`      | Expone `IdentityChannelApplication` (puerto de aplicación de `identity`) para que `bootstrap/` pueda adaptarlo.                                       |
+| `catalog-bridge.module.ts`       | Implementa `ProviderDirectoryPort` mediante `IdentityProviderDirectoryAdapter`, delegando a `ProviderProfileService` de `identity`.                   |
 | `otp-delivery.module.ts`         | Selecciona `OtpSenderPort` según `OTP_SENDER`: `InMemoryOtpSender` (test), `DevelopmentOtpSender` (consola, dev), `TelegramOtpSender` (producción).   |
 | `telegram-otp-sender.adapter.ts` | Implementa `OtpSenderPort` usando `IdentityChannelApplication.findActiveChannelLinkByPhone` + `MessagingPort.sendText`. Fire-and-forget, sin bloqueo. |
 | `identity-channel.adapter.ts`    | Implementa `ChannelIdentityPort` (de `messaging`) delegando a `IdentityChannelApplication`.                                                           |

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../../../shared/infra/database.js';
 import { APP_ENVIRONMENT, DATABASE_POOL } from '../../../../shared/infra/tokens.js';
 import { PhoneNumber } from '../../domain/phone-number.js';
@@ -14,10 +14,20 @@ import type {
   OtpRepository,
   SessionRepository,
   UserRepository,
+  ProviderProfileRepository,
 } from '../../ports/identity-ports.js';
 import type { RateLimitResult, RateLimiterPort } from '../../ports/identity-ports.js';
 import { IDENTITY_HASHER } from '../../ports/tokens.js';
-import { channelLinks, consents, devices, otpCodes, sessions, users } from './drizzle-schema.js';
+import {
+  channelLinks,
+  consents,
+  devices,
+  otpCodes,
+  providerProfiles,
+  sessions,
+  users,
+} from './drizzle-schema.js';
+import type { ProviderProfileProps, ProviderPublicSummary } from '../../domain/provider-profile.js';
 import type { Pool } from 'pg';
 
 const mapUser = (
@@ -335,6 +345,55 @@ export class DrizzleConsentRepository implements ConsentRepository {
         channel: input.channel,
       })
       .onConflictDoNothing({ target: [consents.userId, consents.policyType, consents.version] });
+  }
+}
+
+@Injectable()
+export class DrizzleProviderProfileRepository implements ProviderProfileRepository {
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+
+  async upsert(profile: ProviderProfileProps): Promise<void> {
+    await this.database
+      .current()
+      .insert(providerProfiles)
+      .values(profile)
+      .onConflictDoUpdate({
+        target: providerProfiles.userId,
+        set: {
+          displayName: profile.displayName,
+          municipality: profile.municipality,
+          department: profile.department,
+          lat: profile.lat,
+          lng: profile.lng,
+          description: profile.description,
+        },
+      });
+  }
+
+  async findPublicSummaries(
+    ids: readonly string[],
+  ): Promise<ReadonlyMap<string, ProviderPublicSummary>> {
+    if (ids.length > 50) throw new Error('Provider summary query exceeds the 50-id limit.');
+    const rows = await this.database
+      .current()
+      .select({
+        userId: providerProfiles.userId,
+        displayName: providerProfiles.displayName,
+        municipality: providerProfiles.municipality,
+        department: providerProfiles.department,
+      })
+      .from(providerProfiles)
+      .where(inArray(providerProfiles.userId, [...new Set(ids)]));
+    return new Map(
+      rows.map(({ userId, displayName, municipality, department }) => [
+        userId,
+        {
+          displayName,
+          municipality: municipality ?? '',
+          department: department ?? '',
+        },
+      ]),
+    );
   }
 }
 

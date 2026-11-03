@@ -1,4 +1,8 @@
 import { IdentityApplicationService } from '../src/modules/identity/application/identity-application-service.js';
+import type { UserRole } from '../src/modules/identity/domain/user.js';
+import { PhoneNumber } from '../src/modules/identity/domain/phone-number.js';
+import { DomainError } from '../src/shared/kernel/domain-error.js';
+import { Result } from '../src/shared/kernel/result.js';
 import {
   FixedClock,
   InMemoryOtpSender,
@@ -91,7 +95,7 @@ describe('identity application use cases with in-memory ports', () => {
             jti: 'jti',
             exp: 9_999_999_999,
           },
-          { fullName: 'Nombre actualizado', locale: 'en-US' },
+          { fullName: 'Nombre actualizado', locale: 'en' },
         ),
       ).fullName,
     ).toBe('Nombre actualizado');
@@ -266,3 +270,102 @@ describe('identity application use cases with in-memory ports', () => {
     expect((await harness.service.requestOtp(phoneValue, '10.0.0.1')).ok).toBe(false);
   });
 });
+
+describe('profile validation rules', () => {
+  const makeActor = (role: UserRole = 'buyer') =>
+    ({
+      sub: 'user-1',
+      role,
+      sid: 'session-1',
+      did: 'device-1',
+      jti: 'jti-1',
+      exp: 9_999_999_999,
+    }) as AuthenticatedActor;
+
+  const createService = (overrides: Partial<typeof memorySettings> = {}) => {
+    const clock = new FixedClock();
+    const state = new MemoryState();
+    const sender = new InMemoryOtpSender();
+    const users = new MemoryUserRepository(state);
+    const hasher = new MemoryHasher();
+    const service = new IdentityApplicationService(
+      { ...memorySettings, ...overrides },
+      users,
+      new MemoryOtpRepository(state),
+      new MemorySessionRepository(state),
+      new MemoryDeviceRepository(state),
+      new MemoryConsentRepository(state),
+      new MemoryRateLimiter(state, clock),
+      sender,
+      new MemoryTokens(),
+      hasher,
+      clock,
+      new MemoryUnitOfWork(),
+      new MemoryOutboxWriter(state),
+      new MemoryBackgroundDispatcher(),
+    );
+    return { service, users };
+  };
+
+  const register = (
+    service: IdentityApplicationService,
+    phoneValue: string,
+  ): Promise<Result<{ message: string }, DomainError>> =>
+    service.registerUser({
+      phone: phoneValue,
+      role: 'buyer',
+      fullName: 'Comprador de prueba',
+      deviceId: '10000000-0000-7000-8000-000000000001',
+      platform: 'web',
+      consent: { accepted: true, version: 'v0-draft' },
+      ip: '127.0.0.1',
+    } as Parameters<typeof service.registerUser>[0]);
+
+  const userIdByPhone = async (
+    users: MemoryUserRepository,
+    phoneValue: string,
+  ): Promise<string> => {
+    const phone = PhoneNumber.parse(phoneValue);
+    if (!phone.ok) throw phone.error;
+    const user = await users.findByPhone(phone.value);
+    return user!.id;
+  };
+
+  it('rejects updateMe with an unsupported locale', async () => {
+    const { service, users } = createService();
+    await register(service, '3001234567');
+    const actor = makeActor();
+    actor.sub = await userIdByPhone(users, '3001234567');
+
+    const result = await service.updateMe(actor, { locale: 'fr' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('unsupported_locale');
+  });
+
+  it('rejects updateMe with a full name containing a control character', async () => {
+    const { service, users } = createService();
+    await register(service, '3001234567');
+    const actor = makeActor();
+    actor.sub = await userIdByPhone(users, '3001234567');
+
+    const result = await service.updateMe(actor, { fullName: 'T\u{007F}est' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('invalid_full_name');
+  });
+
+  it('rejects registration with an unsupported locale', async () => {
+    const { service } = createService({ supportedLocales: ['en'] });
+    const result = await register(service, '3001234567');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('unsupported_locale');
+  });
+});
+
+type AuthenticatedActor = {
+  sub: string;
+  role: UserRole;
+  sid: string;
+  did: string;
+  jti: string;
+  exp: number;
+};
