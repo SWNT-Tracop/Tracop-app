@@ -19,6 +19,17 @@ const domainStatus: Record<string, number> = {
   forbidden: HttpStatus.FORBIDDEN,
   not_found: HttpStatus.NOT_FOUND,
   version_conflict: HttpStatus.CONFLICT,
+  photo_limit: HttpStatus.CONFLICT,
+  photo_not_pending: HttpStatus.CONFLICT,
+  photo_order_invalid: HttpStatus.CONFLICT,
+  invalid_photo_id: HttpStatus.BAD_REQUEST,
+  photo_expired: HttpStatus.GONE,
+  photo_upload_missing: HttpStatus.CONFLICT,
+  photo_size_invalid: HttpStatus.UNPROCESSABLE_ENTITY,
+  photo_format_invalid: HttpStatus.UNPROCESSABLE_ENTITY,
+  photo_dimensions_invalid: HttpStatus.UNPROCESSABLE_ENTITY,
+  photo_image_invalid: HttpStatus.UNPROCESSABLE_ENTITY,
+  storage_unavailable: HttpStatus.SERVICE_UNAVAILABLE,
 };
 
 @Catch()

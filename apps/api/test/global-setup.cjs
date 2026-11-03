@@ -36,6 +36,7 @@ module.exports = async () => {
       '0003_identity_device_session_uniqueness.sql',
       '0004_messaging.sql',
       '0005_catalog.sql',
+      '0006_lot_photos.sql',
     ]) {
       await pool.query(await readFile(resolve('drizzle', filename), 'utf8'));
       await pool.query('INSERT INTO shared.schema_migrations (id) VALUES ($1)', [filename]);

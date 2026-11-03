@@ -47,6 +47,33 @@ const envSchema = z.object({
   CATALOG_SEARCH_RADIUS_MAX_KM: z.coerce.number().positive().max(1000).default(500),
   CATALOG_SEARCH_RATE_LIMIT: z.coerce.number().int().positive().default(60),
   CATALOG_SEARCH_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  CATALOG_PHOTO_MAX_COUNT: z.coerce.number().int().positive().max(5).default(5),
+  CATALOG_PHOTO_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(5 * 1024 * 1024)
+    .default(5 * 1024 * 1024),
+  CATALOG_PHOTO_MAX_INPUT_PIXELS: z.coerce.number().int().positive().default(25_000_000),
+  CATALOG_PHOTO_MAX_INPUT_DIMENSION: z.coerce.number().int().positive().default(10_000),
+  CATALOG_PHOTO_MAX_OUTPUT_DIMENSION: z.coerce.number().int().positive().default(2_048),
+  CATALOG_PHOTO_PENDING_TTL_SECONDS: z.coerce.number().int().positive().default(1_800),
+  CATALOG_PHOTO_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  CATALOG_PHOTO_DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  CATALOG_PHOTO_PURGE_GRACE_SECONDS: z.coerce.number().int().nonnegative().default(3_600),
+  CATALOG_PHOTO_WEBP_QUALITY: z.coerce.number().int().min(1).max(100).default(80),
+  CATALOG_PHOTO_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  CATALOG_PHOTO_PROCESSING_LEASE_SECONDS: z.coerce.number().int().positive().default(300),
+  CATALOG_PHOTO_UPLOAD_RATE_LIMIT: z.coerce.number().int().positive().default(30),
+  CATALOG_PHOTO_UPLOAD_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  S3_ENDPOINT: optionalText(z.string().url()),
+  S3_PUBLIC_ENDPOINT: optionalText(z.string().url()),
+  S3_BUCKET: optionalText(z.string().min(3).max(63)),
+  S3_REGION: optionalText(z.string().min(1)),
+  S3_API_ACCESS_KEY: optionalText(z.string().min(1)),
+  S3_API_SECRET_KEY: optionalText(z.string().min(1)),
+  S3_POLICY_ACCESS_KEY: optionalText(z.string().min(1)),
+  S3_POLICY_SECRET_KEY: optionalText(z.string().min(1)),
 });
 
 const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
@@ -69,6 +96,20 @@ const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
       message: 'Production requires TELEGRAM_MODE=webhook.',
     });
   }
+  if (value.NODE_ENV === 'production') {
+    for (const key of [
+      'S3_ENDPOINT',
+      'S3_BUCKET',
+      'S3_REGION',
+      'S3_API_ACCESS_KEY',
+      'S3_API_SECRET_KEY',
+      'S3_POLICY_ACCESS_KEY',
+      'S3_POLICY_SECRET_KEY',
+    ] as const) {
+      if (!value[key])
+        ctx.addIssue({ code: 'custom', path: [key], message: 'Required in production.' });
+    }
+  }
   if (value.TELEGRAM_MODE === 'polling' && value.NODE_ENV !== 'development') {
     ctx.addIssue({
       code: 'custom',
@@ -87,6 +128,8 @@ const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
 
 export type AppEnvironment = z.infer<typeof envSchema> & {
   TELEGRAM_BOT_USERNAME: string;
+  S3_REGION: string;
+  S3_PUBLIC_ENDPOINT: string | undefined;
   allowedCountryCodes: readonly string[];
   supportedLocales: readonly string[];
   telegramBotLink: string;
@@ -130,5 +173,7 @@ export const loadAppEnvironment = (cwd = process.cwd()): AppEnvironment => {
     allowedCountryCodes,
     supportedLocales,
     telegramBotLink: `https://t.me/${telegramBotUsername}?start=link`,
+    S3_PUBLIC_ENDPOINT: parsed.S3_PUBLIC_ENDPOINT ?? parsed.S3_ENDPOINT,
+    S3_REGION: parsed.S3_REGION ?? 'us-east-1',
   };
 };

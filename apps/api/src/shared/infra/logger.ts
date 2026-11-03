@@ -11,7 +11,12 @@ export const maskSensitiveFields = (value: unknown): unknown => {
 
   return Object.fromEntries(
     Object.entries(value).map(([key, fieldValue]) => {
-      if (/otp|token|secret|authorization|refresh|password/i.test(key)) return [key, '[REDACTED]'];
+      if (
+        /otp|token|secret|authorization|refresh|password|presign|policy|uploadurl|downloadurl|signedurl|signature|credential/i.test(
+          key,
+        )
+      )
+        return [key, '[REDACTED]'];
       if (/^(ip|remoteaddress|remote_address|x-forwarded-for|xforwardedfor)$/i.test(key))
         return [key, '[REDACTED]'];
       if (key === 'phone' && typeof fieldValue === 'string') return [key, maskPhone(fieldValue)];
@@ -59,6 +64,18 @@ export const createLogger = (
           '*.webhookSecret',
           'secretToken',
           '*.secretToken',
+          'url',
+          '*.url',
+          'uploadUrl',
+          '*.uploadUrl',
+          'downloadUrl',
+          '*.downloadUrl',
+          'fields',
+          '*.fields',
+          'policy',
+          '*.policy',
+          'x-amz-signature',
+          '*.x-amz-signature',
           'channelUserId',
           '*.channelUserId',
           'channel_user_id',

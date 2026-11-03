@@ -46,6 +46,22 @@ const errorResponses: Record<number, { description: string; example: Record<stri
     description: 'El cuerpo excede el límite configurado.',
     example: { statusCode: 413, message: 'Solicitud demasiado grande.' },
   },
+  410: {
+    description: 'El recurso o la ventana temporal de la operación venció.',
+    example: { statusCode: 410, code: 'photo_expired', message: 'La carga de la foto venció.' },
+  },
+  422: {
+    description: 'La imagen no cumple el formato, tamaño o dimensiones permitidas.',
+    example: { statusCode: 422, code: 'photo_format_invalid', message: 'La imagen no es válida.' },
+  },
+  503: {
+    description: 'El servicio de almacenamiento no está disponible temporalmente.',
+    example: {
+      statusCode: 503,
+      code: 'storage_unavailable',
+      message: 'No se pudo procesar la imagen.',
+    },
+  },
   500: {
     description: 'Ocurrió un error interno.',
     example: { statusCode: 500, message: 'Error interno.' },

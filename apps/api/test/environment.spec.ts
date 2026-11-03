@@ -14,8 +14,25 @@ const environmentKeys = [
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_WEBHOOK_SECRET',
   'TELEGRAM_BOT_USERNAME',
+  'S3_ENDPOINT',
+  'S3_PUBLIC_ENDPOINT',
+  'S3_BUCKET',
+  'S3_REGION',
+  'S3_API_ACCESS_KEY',
+  'S3_API_SECRET_KEY',
+  'S3_POLICY_ACCESS_KEY',
+  'S3_POLICY_SECRET_KEY',
 ];
 const previousValues = new Map<string, string | undefined>();
+const productionS3 = {
+  S3_ENDPOINT: 'http://127.0.0.1:9000',
+  S3_BUCKET: 'tracop-test',
+  S3_REGION: 'us-east-1',
+  S3_API_ACCESS_KEY: 'api-key',
+  S3_API_SECRET_KEY: 'api-secret',
+  S3_POLICY_ACCESS_KEY: 'policy-key',
+  S3_POLICY_SECRET_KEY: 'policy-secret',
+} as const;
 
 describe('runtime environment validation', () => {
   beforeEach(() => {
@@ -42,6 +59,7 @@ describe('runtime environment validation', () => {
       OTP_HMAC_SECRET: 'o'.repeat(32),
       RATE_LIMIT_HMAC_SECRET: 'r'.repeat(32),
       OTP_SENDER: 'console',
+      ...productionS3,
     });
     expect(() => loadAppEnvironment('/tmp/tracop-no-env')).toThrow('OTP_SENDER=telegram');
   });
@@ -55,6 +73,7 @@ describe('runtime environment validation', () => {
       RATE_LIMIT_HMAC_SECRET: 'r'.repeat(32),
       OTP_SENDER: 'telegram',
       TELEGRAM_MODE: 'webhook',
+      ...productionS3,
     });
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -72,6 +91,7 @@ describe('runtime environment validation', () => {
       TELEGRAM_MODE: 'webhook',
       TELEGRAM_BOT_TOKEN: '123456:token',
       TELEGRAM_WEBHOOK_SECRET: 'secret',
+      ...productionS3,
     });
     delete process.env.TELEGRAM_BOT_USERNAME;
     expect(() => loadAppEnvironment('/tmp/tracop-no-env')).toThrow('TELEGRAM_BOT_USERNAME');
@@ -139,5 +159,71 @@ describe('runtime environment validation', () => {
     const config = loadAppEnvironment('/tmp/tracop-no-env');
     expect(config.TRUST_PROXY).toBe(true);
     expect(config.allowedCountryCodes).toEqual(['57', '1']);
+  });
+
+  it('defaults the public S3 endpoint to the internal endpoint and keeps credentials separate', () => {
+    Object.assign(process.env, {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://localhost/test',
+      JWT_SECRET: 'j'.repeat(32),
+      OTP_HMAC_SECRET: 'o'.repeat(32),
+      RATE_LIMIT_HMAC_SECRET: 'r'.repeat(32),
+      OTP_SENDER: 'console',
+      TELEGRAM_MODE: 'webhook',
+      S3_ENDPOINT: 'http://127.0.0.1:9000',
+      S3_BUCKET: 'tracop-test',
+      S3_API_ACCESS_KEY: 'api-key',
+      S3_API_SECRET_KEY: 'api-secret',
+      S3_POLICY_ACCESS_KEY: 'policy-key',
+      S3_POLICY_SECRET_KEY: 'policy-secret',
+    });
+    delete process.env.S3_PUBLIC_ENDPOINT;
+    delete process.env.S3_REGION;
+    const config = loadAppEnvironment('/tmp/tracop-no-env');
+    expect(config.S3_PUBLIC_ENDPOINT).toBe('http://127.0.0.1:9000');
+    expect(config.S3_REGION).toBe('us-east-1');
+    expect(config.S3_API_ACCESS_KEY).toBe('api-key');
+    expect(config.S3_POLICY_ACCESS_KEY).toBe('policy-key');
+  });
+
+  it('honours an explicitly configured public S3 endpoint', () => {
+    Object.assign(process.env, {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://localhost/test',
+      JWT_SECRET: 'j'.repeat(32),
+      OTP_HMAC_SECRET: 'o'.repeat(32),
+      RATE_LIMIT_HMAC_SECRET: 'r'.repeat(32),
+      OTP_SENDER: 'console',
+      TELEGRAM_MODE: 'webhook',
+      S3_ENDPOINT: 'http://minio:9000',
+      S3_PUBLIC_ENDPOINT: 'https://files.example.test',
+      S3_BUCKET: 'tracop-test',
+    });
+    expect(loadAppEnvironment('/tmp/tracop-no-env').S3_PUBLIC_ENDPOINT).toBe(
+      'https://files.example.test',
+    );
+  });
+
+  it('requires the complete S3 configuration in production', () => {
+    Object.assign(process.env, {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://localhost/test',
+      JWT_SECRET: 'j'.repeat(32),
+      OTP_HMAC_SECRET: 'o'.repeat(32),
+      RATE_LIMIT_HMAC_SECRET: 'r'.repeat(32),
+      OTP_SENDER: 'telegram',
+      TELEGRAM_MODE: 'webhook',
+      TELEGRAM_BOT_TOKEN: '123456:token',
+      TELEGRAM_WEBHOOK_SECRET: 'secret',
+      TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
+      S3_ENDPOINT: '',
+      S3_BUCKET: '',
+      S3_REGION: '',
+      S3_API_ACCESS_KEY: '',
+      S3_API_SECRET_KEY: '',
+      S3_POLICY_ACCESS_KEY: '',
+      S3_POLICY_SECRET_KEY: '',
+    });
+    expect(() => loadAppEnvironment('/tmp/tracop-no-env')).toThrow(/S3_ENDPOINT/);
   });
 });
