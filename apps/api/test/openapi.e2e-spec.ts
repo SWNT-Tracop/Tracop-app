@@ -32,7 +32,7 @@ describePostgres('OpenAPI metadata and production docs exposure', () => {
     );
     expect(operations.length).toBeGreaterThan(0);
     for (const operation of operations) {
-      expect(operation.summary).toEqual(expect.any(String));
+      expect(operation.summary).toBeTruthy();
       expect(operation.tags?.length).toBeGreaterThan(0);
       expect(Object.keys(operation.responses ?? {}).some((status) => Number(status) >= 400)).toBe(
         true,
