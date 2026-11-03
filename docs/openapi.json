@@ -1609,7 +1609,7 @@
         "tags": ["catalog"]
       },
       "post": {
-        "description": "Crea una categoría de catálogo con ID UUID v7 generado por el cliente.",
+        "description": "Crea una categoría de catálogo con ID UUID generado por el cliente; el contrato valida formato UUID, no la versión.",
         "operationId": "CatalogController_createCategory",
         "parameters": [],
         "requestBody": {

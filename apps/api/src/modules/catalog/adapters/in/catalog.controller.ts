@@ -50,7 +50,8 @@ export class CatalogController {
   @Roles('operator', 'admin')
   @ApiOperation({
     summary: 'Crear categoría',
-    description: 'Crea una categoría de catálogo con ID UUID v7 generado por el cliente.',
+    description:
+      'Crea una categoría de catálogo con ID UUID generado por el cliente; el contrato valida formato UUID, no la versión.',
   })
   @ApiZodBody(createCategorySchema, {
     id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
