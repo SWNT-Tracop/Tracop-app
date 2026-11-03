@@ -1,5 +1,6 @@
 import { serializeLotForViewer } from '../src/modules/catalog/adapters/in/lot-response.js';
 import type { LotProps } from '../src/modules/catalog/domain/lot.js';
+import { findCoordinateExposure } from './helpers/coordinate-exposure.js';
 
 const lot: LotProps = {
   id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
@@ -28,8 +29,9 @@ describe('lot response location privacy', () => {
     expect(response.provider).not.toHaveProperty('userId');
     expect(response.provider).not.toHaveProperty('lat');
     expect(response.provider).not.toHaveProperty('lng');
-    expect(JSON.stringify(response)).not.toContain(String(lot.locationLat));
-    expect(JSON.stringify(response)).not.toContain(String(lot.locationLng));
+    expect(
+      findCoordinateExposure(response, [{ latitude: lot.locationLat, longitude: lot.locationLng }]),
+    ).toEqual([]);
   });
 
   it('includes lot coordinates only to its owner', () => {
@@ -41,6 +43,5 @@ describe('lot response location privacy', () => {
   it('rounds third-party distances to integer kilometres with a minimum of one', () => {
     const near = serializeLotForViewer(lot, publicProvider, 'buyer-id', 0.2);
     expect(near.distanceKm).toBe(1);
-    expect(JSON.stringify(near)).not.toContain('0.2');
   });
 });

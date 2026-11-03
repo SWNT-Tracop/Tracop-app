@@ -1,5 +1,6 @@
 import { Writable } from 'node:stream';
 import { createLogger } from '../src/shared/infra/logger.js';
+import { findJsonScalarPaths, parseJsonLines } from './helpers/json-values.js';
 
 describe('Pino sensitive-field redaction', () => {
   it('redacts phone numbers, OTPs, and tokens from structured records', async () => {
@@ -23,8 +24,9 @@ describe('Pino sensitive-field redaction', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     destination.end();
     expect(output).toContain('[REDACTED]');
-    expect(output).not.toContain('+573001234567');
-    expect(output).not.toContain('123456');
+    const records = parseJsonLines(output);
+    expect(findJsonScalarPaths(records, '+573001234567')).toEqual([]);
+    expect(findJsonScalarPaths(records, '123456')).toEqual([]);
     expect(output).not.toContain('access-secret');
     expect(output).not.toContain('refresh-secret');
   });

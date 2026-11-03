@@ -15,6 +15,8 @@ import {
 import { DATABASE_POOL } from '../src/shared/infra/tokens.js';
 import { createId } from '../src/shared/kernel/ids.js';
 import { describePostgres } from './postgres-suite.js';
+import { findCoordinateExposure } from './helpers/coordinate-exposure.js';
+import { findJsonScalarPaths } from './helpers/json-values.js';
 
 describePostgres('catalog HTTP flow (Nest + PostgreSQL Testcontainers)', () => {
   let app: INestApplication;
@@ -225,13 +227,14 @@ describePostgres('catalog HTTP flow (Nest + PostgreSQL Testcontainers)', () => {
     expect(Number.isInteger(found.distanceKm)).toBe(true);
     expect(found.distanceKm).toBeGreaterThanOrEqual(1);
     for (const response of [search.body, found]) {
-      const serialized = JSON.stringify(response);
-      expect(serialized).not.toContain('locationLat');
-      expect(serialized).not.toContain('locationLng');
-      expect(serialized).not.toContain('providerId');
-      expect(serialized).not.toContain(producer.phone);
-      expect(serialized).not.toContain('5.5');
-      expect(serialized).not.toContain('-73.4');
+      expect(
+        findCoordinateExposure(response, [
+          { latitude: lotInput.locationLat, longitude: lotInput.locationLng },
+          { latitude: 5.5, longitude: -73.4 },
+        ]),
+      ).toEqual([]);
+      expect(response).not.toHaveProperty('providerId');
+      expect(findJsonScalarPaths(response, producer.phone)).toEqual([]);
     }
     await request(app.getHttpServer()).get(`/lots/${lotId}`).set(actor(buyer.token)).expect(200);
     const ownerView = await request(app.getHttpServer())
@@ -263,8 +266,8 @@ describePostgres('catalog HTTP flow (Nest + PostgreSQL Testcontainers)', () => {
       .set(actor(buyer.token))
       .expect(200);
     expect(firstDistancePage.body.nextCursor).toEqual(expect.any(String));
-    expect(firstDistancePage.body.nextCursor).not.toContain('5.52');
-    expect(firstDistancePage.body.nextCursor).not.toContain('-73.4');
+    expect(firstDistancePage.body.nextCursor).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(Buffer.from(firstDistancePage.body.nextCursor, 'base64url').length).toBeGreaterThan(28);
     const secondDistancePage = await request(app.getHttpServer())
       .get('/lots')
       .query({

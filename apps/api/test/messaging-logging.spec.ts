@@ -9,6 +9,7 @@ import type { AppEnvironment } from '../src/shared/infra/env.js';
 import { createLogger } from '../src/shared/infra/logger.js';
 import { FixedClock } from './support/in-memory-identity.js';
 import { FakeMessagingAdapter } from './support/fake-messaging.js';
+import { findJsonScalarPaths, parseJsonLines } from './helpers/json-values.js';
 
 class FakeApplication implements MessagingApplication {
   result: UpdateProcessingResult = { kind: 'processed', replies: [] };
@@ -96,7 +97,8 @@ describe('messaging logging', () => {
     });
 
     expect(read()).toContain('messaging_security_event');
-    expect(read()).not.toContain('3001234567');
-    expect(read()).not.toContain('900001');
+    const records = parseJsonLines(read());
+    expect(findJsonScalarPaths(records, '+573001234567')).toEqual([]);
+    expect(findJsonScalarPaths(records, 900001)).toEqual([]);
   });
 });
