@@ -12,7 +12,7 @@ export class InMemoryStorageAdapter implements StoragePort {
     readonly expiresAt: Date;
   }): Promise<{ url: string; fields: Readonly<Record<string, string>>; expiresAt: Date }> {
     return {
-      url: 'http://memory.invalid/upload',
+      url: 'https://memory.invalid/upload',
       fields: { key: input.key, maxBytes: String(input.maxBytes) },
       expiresAt: input.expiresAt,
     };
@@ -50,7 +50,7 @@ export class InMemoryStorageAdapter implements StoragePort {
 
   async createDownloadUrl(key: string, expiresAt: Date): Promise<string> {
     if (!this.objects.has(key)) throw new Error('Object not found.');
-    return `http://memory.invalid/${key}?expires=${expiresAt.toISOString()}`;
+    return `https://memory.invalid/${key}?expires=${expiresAt.toISOString()}`;
   }
 
   async deleteObject(key: string): Promise<void> {
