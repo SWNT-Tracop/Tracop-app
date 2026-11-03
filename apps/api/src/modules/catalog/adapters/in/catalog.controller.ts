@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
@@ -28,7 +29,25 @@ import type { AppEnvironment } from '../../../../shared/infra/env.js';
 import { CatalogService } from '../../application/catalog-service.js';
 import { PROVIDER_DIRECTORY, type ProviderDirectoryPort } from '../../ports/catalog-ports.js';
 import { serializeLotForViewer } from './lot-response.js';
-import { ApiErrorResponses, ApiZodBody } from '../../../../shared/infra/openapi.js';
+import { ApiErrorResponses, ApiZodBody, ApiZodResponse } from '../../../../shared/infra/openapi.js';
+import { z } from 'zod';
+import { LotPhotoService } from '../../application/lot-photo-service.js';
+
+const uuidV7Schema = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+const createPhotoUploadSchema = z.object({ photoId: uuidV7Schema });
+const reorderPhotosSchema = z.object({ photoIds: z.array(uuidV7Schema).max(5) });
+const photoUploadResponseSchema = z.object({
+  state: z.enum(['pending', 'processing', 'ready']),
+  uploadPolicy: z
+    .object({
+      url: z.string().url(),
+      fields: z.record(z.string(), z.string()),
+      expiresAt: z.string().datetime(),
+    })
+    .optional(),
+});
 
 @ApiTags('catalog')
 @ApiBearerAuth()
@@ -142,6 +161,7 @@ export class CatalogController {
 export class LotsController {
   constructor(
     @Inject(CatalogService) private readonly catalog: CatalogService,
+    @Inject(LotPhotoService) private readonly lotPhotos: LotPhotoService,
     @Inject(PROVIDER_DIRECTORY) private readonly providers: ProviderDirectoryPort,
     @Inject(InMemorySearchRateLimiter)
     private readonly searchRateLimiter: InMemorySearchRateLimiter,
@@ -316,7 +336,96 @@ export class LotsController {
   })
   @ApiErrorResponses(401, 403, 404)
   async get(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.toResponse(await this.catalog.getLot(req.identity!, id), req.identity!.sub);
+    return this.toResponse(
+      await this.catalog.getLot(req.identity!, id),
+      req.identity!.sub,
+      undefined,
+      true,
+    );
+  }
+
+  @Post(':id/photos')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Preparar carga de foto del lote',
+    description:
+      'Reserva una foto y devuelve una política POST prefirmada de un solo objeto y tamaño limitado.',
+  })
+  @ApiParam({ name: 'id', schema: { type: 'string', format: 'uuid' } })
+  @ApiZodBody(createPhotoUploadSchema, { photoId: '0190f47a-8b45-7cc2-9a1e-123456789abc' })
+  @ApiZodResponse(201, photoUploadResponseSchema, {
+    state: 'pending',
+    uploadPolicy: {
+      url: 'https://storage.example/upload',
+      fields: { key: 'incoming/synthetic-random-key' },
+      expiresAt: '2026-11-03T12:05:00.000Z',
+    },
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409, 429, 500, 503)
+  async preparePhotoUpload(
+    @Param('id') lotId: string,
+    @Body() body: unknown,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const { photoId } = createPhotoUploadSchema.parse(body);
+    return this.lotPhotos.prepareUpload(req.identity!, lotId, photoId);
+  }
+
+  @Post(':id/photos/:photoId/confirm')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Confirmar foto del lote',
+    description: 'Valida, orienta y recodifica la imagen sin metadatos privados.',
+  })
+  @ApiParam({ name: 'id', schema: { type: 'string', format: 'uuid' } })
+  @ApiParam({ name: 'photoId', schema: { type: 'string', format: 'uuid' } })
+  @ApiZodResponse(201, photoUploadResponseSchema, { state: 'ready' })
+  @ApiErrorResponses(401, 403, 404, 409, 410, 422, 503)
+  async confirmPhoto(
+    @Param('id') lotId: string,
+    @Param('photoId') photoId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.lotPhotos.confirm(req.identity!, lotId, photoId);
+  }
+
+  @Delete(':id/photos/:photoId')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Eliminar foto del lote',
+    description: 'Elimina lógicamente la foto y solicita borrar el objeto privado.',
+  })
+  @ApiParam({ name: 'id', schema: { type: 'string', format: 'uuid' } })
+  @ApiParam({ name: 'photoId', schema: { type: 'string', format: 'uuid' } })
+  @ApiZodResponse(200, z.object({ status: z.literal('deleted') }), { status: 'deleted' })
+  @ApiErrorResponses(401, 403, 404, 409, 503)
+  async deletePhoto(
+    @Param('id') lotId: string,
+    @Param('photoId') photoId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    await this.lotPhotos.delete(req.identity!, lotId, photoId);
+    return { status: 'deleted' as const };
+  }
+
+  @Patch(':id/photos/order')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Ordenar fotos del lote',
+    description: 'Define el orden completo de las fotos listas del lote.',
+  })
+  @ApiParam({ name: 'id', schema: { type: 'string', format: 'uuid' } })
+  @ApiZodBody(reorderPhotosSchema, { photoIds: ['0190f47a-8b45-7cc2-9a1e-123456789abc'] })
+  @ApiZodResponse(200, z.object({ status: z.literal('ordered') }), { status: 'ordered' })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async reorderPhotos(
+    @Param('id') lotId: string,
+    @Body() body: unknown,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const { photoIds } = reorderPhotosSchema.parse(body);
+    await this.lotPhotos.reorder(req.identity!, lotId, photoIds);
+    return { status: 'ordered' as const };
   }
   @Patch(':id')
   @Roles('producer', 'supplier')
@@ -399,13 +508,21 @@ export class LotsController {
       | Awaited<ReturnType<CatalogService['createLot']>>,
     viewerId: string,
     distanceKm?: number,
+    includeAllPhotos = false,
   ) {
     const [provider] = await this.providers
       .getProviderPublicSummaries([lot.providerId])
       .then((map) => [map.get(lot.providerId)]);
     if (!provider)
       throw new DomainError('Perfil público del proveedor no encontrado.', 'not_found');
-    return serializeLotForViewer(lot, provider, viewerId, distanceKm);
+    const photos = await this.lotPhotos.photosForLots(
+      [lot.id],
+      includeAllPhotos ? new Set([lot.id]) : new Set(),
+    );
+    return {
+      ...serializeLotForViewer(lot, provider, viewerId, distanceKm),
+      photos: photos.get(lot.id) ?? [],
+    };
   }
 
   private encodeCursor(payload: unknown): string {

@@ -96,7 +96,30 @@ export const lotPhotos = catalog.table(
     id: uuid('id').primaryKey(),
     lotId: uuid('lot_id').notNull(),
     mediaRef: text('media_ref').notNull(),
+    state: text('state').notNull(),
+    contentType: text('content_type'),
+    sizeBytes: integer('size_bytes'),
+    position: integer('position').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    leaseToken: text('lease_token'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
-  (table) => [index('lot_photos_lot_id_idx').on(table.lotId)],
+  (table) => [
+    index('lot_photos_lot_id_idx').on(table.lotId),
+    index('lot_photos_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.state} <> 'ready'`),
+    index('lot_photos_order_idx')
+      .on(table.lotId, table.position)
+      .where(sql`${table.deletedAt} IS NULL`),
+    check('lot_photos_state_check', sql`${table.state} IN ('pending','processing','ready')`),
+    check('lot_photos_position_check', sql`${table.position} > 0`),
+    check('lot_photos_size_check', sql`${table.sizeBytes} IS NULL OR ${table.sizeBytes} > 0`),
+    check(
+      'lot_photos_ready_metadata_check',
+      sql`(${table.state} = 'ready' AND ${table.contentType} = 'image/webp' AND ${table.sizeBytes} IS NOT NULL) OR (${table.state} <> 'ready' AND ${table.contentType} IS NULL AND ${table.sizeBytes} IS NULL)`,
+    ),
+  ],
 );
