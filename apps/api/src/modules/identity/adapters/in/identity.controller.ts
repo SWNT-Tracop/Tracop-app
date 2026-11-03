@@ -71,7 +71,7 @@ export class IdentityController {
     consent: { accepted: true, version: 'v0-draft' },
   })
   @ApiZodResponse(201, z.object({ message: z.string() }), {
-    message: 'Si el registro puede continuar, recibirás instrucciones.',
+    message: 'Si el registro puede continuar, recibirás un código.',
   })
   @ApiErrorResponses(400, 403, 409, 429)
   async register(@Body() body: unknown, @Req() request: Request) {

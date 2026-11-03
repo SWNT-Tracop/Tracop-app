@@ -152,7 +152,7 @@
                   "additionalProperties": false
                 },
                 "example": {
-                  "message": "Si el registro puede continuar, recibirás instrucciones."
+                  "message": "Si el registro puede continuar, recibirás un código."
                 }
               }
             }
