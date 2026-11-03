@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/bootstrap/app.module.js';
 import { createOpenApiDocument } from '../src/shared/infra/swagger.js';
@@ -13,13 +14,19 @@ const exportOpenApi = async (): Promise<void> => {
   process.env.JWT_SECRET = 'openapi-export-only-jwt-secret-not-for-authentication';
   process.env.OTP_HMAC_SECRET = 'openapi-export-only-otp-hmac-secret';
   process.env.RATE_LIMIT_HMAC_SECRET = 'openapi-export-only-rate-limit-secret';
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const app = await NestFactory.create(AppModule, { bodyParser: false, logger: false });
   try {
     const document = createOpenApiDocument(app);
     const generated = `${JSON.stringify(document, null, 2)}\n`;
     if (process.argv.includes('--check')) {
       const current = await readFile(outputPath, 'utf8').catch(() => '');
-      if (current !== generated) {
+      let matches = false;
+      try {
+        matches = isDeepStrictEqual(JSON.parse(current), JSON.parse(generated));
+      } catch {
+        matches = false;
+      }
+      if (!matches) {
         throw new Error(
           'docs/openapi.json is stale. Run `pnpm openapi:export` and commit the generated file.',
         );
