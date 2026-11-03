@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import {
   createCategorySchema,
@@ -28,6 +28,7 @@ import type { AppEnvironment } from '../../../../shared/infra/env.js';
 import { CatalogService } from '../../application/catalog-service.js';
 import { PROVIDER_DIRECTORY, type ProviderDirectoryPort } from '../../ports/catalog-ports.js';
 import { serializeLotForViewer } from './lot-response.js';
+import { ApiErrorResponses, ApiZodBody } from '../../../../shared/infra/openapi.js';
 
 @ApiTags('catalog')
 @ApiBearerAuth()
@@ -36,16 +37,44 @@ import { serializeLotForViewer } from './lot-response.js';
 export class CatalogController {
   constructor(@Inject(CatalogService) private readonly catalog: CatalogService) {}
 
-  @Get('categories') async listCategories() {
+  @Get('categories')
+  @ApiOperation({
+    summary: 'Listar categorías',
+    description: 'Devuelve la taxonomía activa del catálogo.',
+  })
+  @ApiErrorResponses(401, 403)
+  async listCategories() {
     return this.catalog.listCategories();
   }
-  @Post('categories') @Roles('operator', 'admin') async createCategory(
-    @Body() body: unknown,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  @Post('categories')
+  @Roles('operator', 'admin')
+  @ApiOperation({
+    summary: 'Crear categoría',
+    description:
+      'Crea una categoría de catálogo con ID UUID generado por el cliente; el contrato valida formato UUID, no la versión.',
+  })
+  @ApiZodBody(createCategorySchema, {
+    id: '018f47a2-8b45-7cc2-9a1e-123456789abc',
+    name: 'Hortalizas',
+    parentId: null,
+  })
+  @ApiErrorResponses(400, 401, 403, 409)
+  async createCategory(@Body() body: unknown, @Req() req: AuthenticatedRequest) {
     return this.catalog.createCategory(req.identity!, createCategorySchema.parse(body));
   }
-  @Patch('categories/:id') @Roles('operator', 'admin') async updateCategory(
+  @Patch('categories/:id')
+  @Roles('operator', 'admin')
+  @ApiOperation({
+    summary: 'Actualizar categoría',
+    description: 'Actualiza el nombre de una categoría existente.',
+  })
+  @ApiParam({
+    name: 'id',
+    schema: { type: 'string', format: 'uuid' },
+    example: '018f47a2-8b45-7cc2-9a1e-123456789abc',
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async updateCategory(
     @Param('id') id: string,
     @Body() body: unknown,
     @Req() req: AuthenticatedRequest,
@@ -53,19 +82,50 @@ export class CatalogController {
     const input = createCategorySchema.pick({ name: true }).parse(body);
     return this.catalog.updateCategory(req.identity!, id, input);
   }
-  @Get('products') async listProducts(@Query() query: Record<string, string>) {
+  @Get('products')
+  @ApiOperation({
+    summary: 'Listar productos',
+    description: 'Filtra el catálogo por categoría y texto de búsqueda.',
+  })
+  @ApiQuery({ name: 'categoryId', required: false, schema: { type: 'string', format: 'uuid' } })
+  @ApiQuery({ name: 'q', required: false, schema: { type: 'string', maxLength: 120 } })
+  @ApiErrorResponses(400, 401, 403)
+  async listProducts(@Query() query: Record<string, string>) {
     return this.catalog.listProducts({
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.q ? { q: query.q } : {}),
     });
   }
-  @Post('products') @Roles('operator', 'admin') async createProduct(
-    @Body() body: unknown,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  @Post('products')
+  @Roles('operator', 'admin')
+  @ApiOperation({
+    summary: 'Crear producto',
+    description: 'Añade un producto con unidad y atributos estructurados.',
+  })
+  @ApiZodBody(createProductSchema, {
+    id: '018f47a2-8b45-7cc2-9a1e-123456789abd',
+    categoryId: '018f47a2-8b45-7cc2-9a1e-123456789abc',
+    name: 'Tomate chonto',
+    unit: 'kg',
+    attributes: { color: 'rojo' },
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async createProduct(@Body() body: unknown, @Req() req: AuthenticatedRequest) {
     return this.catalog.createProduct(req.identity!, createProductSchema.parse(body) as never);
   }
-  @Patch('products/:id') @Roles('operator', 'admin') async updateProduct(
+  @Patch('products/:id')
+  @Roles('operator', 'admin')
+  @ApiOperation({
+    summary: 'Actualizar producto',
+    description: 'Actualiza los datos de un producto existente.',
+  })
+  @ApiParam({
+    name: 'id',
+    schema: { type: 'string', format: 'uuid' },
+    example: '018f47a2-8b45-7cc2-9a1e-123456789abd',
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async updateProduct(
     @Param('id') id: string,
     @Body() body: unknown,
     @Req() req: AuthenticatedRequest,
@@ -88,10 +148,27 @@ export class LotsController {
     @Inject(APP_ENVIRONMENT) private readonly env: AppEnvironment,
   ) {}
 
-  @Post() @Roles('producer', 'supplier') async create(
-    @Body() body: unknown,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  @Post()
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Crear lote',
+    description:
+      'Registra un lote en estado borrador. quantityMilli expresa milésimas de unidad; unitPrice está expresado en pesos enteros.',
+  })
+  @ApiZodBody(createLotSchema, {
+    id: '018f47a2-8b45-7cc2-9a1e-123456789abe',
+    productId: '018f47a2-8b45-7cc2-9a1e-123456789abd',
+    quantityMilli: '25000',
+    unit: 'kg',
+    unitPrice: 3200,
+    qualityGrade: 'Primera',
+    availableFrom: '2026-11-05T12:00:00.000Z',
+    availableUntil: '2026-11-10T12:00:00.000Z',
+    locationLat: 5.5353,
+    locationLng: -73.3678,
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async create(@Body() body: unknown, @Req() req: AuthenticatedRequest) {
     const input = createLotSchema.parse(body);
     return this.toResponse(
       await this.catalog.createLot(req.identity!, {
@@ -104,14 +181,79 @@ export class LotsController {
       req.identity!.sub,
     );
   }
-  @Get('mine') @Roles('producer', 'supplier') async mine(@Req() req: AuthenticatedRequest) {
+  @Get('mine')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Listar mis lotes',
+    description: 'Devuelve los lotes pertenecientes al proveedor autenticado.',
+  })
+  @ApiErrorResponses(401, 403)
+  async mine(@Req() req: AuthenticatedRequest) {
     return Promise.all(
       (await this.catalog.getMyLots(req.identity!)).map((lot) =>
         this.toResponse(lot, req.identity!.sub),
       ),
     );
   }
-  @Get() async search(@Query() query: unknown, @Req() req: AuthenticatedRequest) {
+  @Get()
+  @ApiOperation({
+    summary: 'Buscar lotes visibles',
+    description:
+      'Filtros: categoría, producto, texto, precio, disponibilidad y ubicación (lat, lng y radiusKm se envían juntos). sort admite price, distance, availability y recent. limit va de 1 a 50 (por defecto 20). cursor es opaco y cifrado; reenvíelo sin modificar. distanceKm se devuelve como entero para terceros; la ubicación precisa solo se incluye al propietario. El radio máximo efectivo es configurable por el servidor.',
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    schema: { type: 'string', maxLength: 120 },
+    example: 'tomate orgánico',
+  })
+  @ApiQuery({ name: 'categoryId', required: false, schema: { type: 'string', format: 'uuid' } })
+  @ApiQuery({ name: 'productId', required: false, schema: { type: 'string', format: 'uuid' } })
+  @ApiQuery({ name: 'minPrice', required: false, schema: { type: 'integer', minimum: 0 } })
+  @ApiQuery({ name: 'maxPrice', required: false, schema: { type: 'integer', minimum: 0 } })
+  @ApiQuery({
+    name: 'availableFrom',
+    required: false,
+    schema: { type: 'string', format: 'date-time' },
+  })
+  @ApiQuery({
+    name: 'availableUntil',
+    required: false,
+    schema: { type: 'string', format: 'date-time' },
+  })
+  @ApiQuery({ name: 'lat', required: false, schema: { type: 'number', minimum: -90, maximum: 90 } })
+  @ApiQuery({
+    name: 'lng',
+    required: false,
+    schema: { type: 'number', minimum: -180, maximum: 180 },
+  })
+  @ApiQuery({
+    name: 'radiusKm',
+    required: false,
+    schema: { type: 'number', minimum: 0, exclusiveMinimum: true, maximum: 500 },
+  })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    schema: {
+      type: 'string',
+      enum: ['price', 'distance', 'availability', 'recent'],
+      default: 'recent',
+    },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    schema: { type: 'string', maxLength: 1024 },
+    description: 'Cursor opaco de la página anterior; no decodificar ni modificar.',
+  })
+  @ApiErrorResponses(400, 401, 403, 429)
+  async search(@Query() query: unknown, @Req() req: AuthenticatedRequest) {
     const input = searchLotsQuerySchema.parse(query);
     if (input.radiusKm !== undefined && input.radiusKm > this.env.CATALOG_SEARCH_RADIUS_MAX_KM) {
       throw new DomainError('El radio supera el máximo permitido.', 'invalid_search_radius');
@@ -161,14 +303,34 @@ export class LotsController {
       ...(page.nextCursor ? { nextCursor: this.encodeCursor(page.nextCursor) } : {}),
     };
   }
-  @Get(':id') async get(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Consultar lote',
+    description:
+      'Devuelve el lote visible para la cuenta autenticada, ocultando coordenadas exactas a terceros.',
+  })
+  @ApiParam({
+    name: 'id',
+    schema: { type: 'string', format: 'uuid' },
+    example: '018f47a2-8b45-7cc2-9a1e-123456789abe',
+  })
+  @ApiErrorResponses(401, 403, 404)
+  async get(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.toResponse(await this.catalog.getLot(req.identity!, id), req.identity!.sub);
   }
-  @Patch(':id') @Roles('producer', 'supplier') async update(
-    @Param('id') id: string,
-    @Body() body: unknown,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  @Patch(':id')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Actualizar lote',
+    description: 'Actualiza campos del lote usando control optimista mediante version.',
+  })
+  @ApiParam({
+    name: 'id',
+    schema: { type: 'string', format: 'uuid' },
+    example: '018f47a2-8b45-7cc2-9a1e-123456789abe',
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async update(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest) {
     if (
       typeof body !== 'object' ||
       body === null ||
@@ -182,22 +344,38 @@ export class LotsController {
       req.identity!.sub,
     );
   }
-  @Post(':id/publish') @Roles('producer', 'supplier') async publish(
-    @Param('id') id: string,
-    @Body() body: unknown,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  @Post(':id/publish')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Publicar lote',
+    description: 'Publica el borrador si version coincide con la versión actual.',
+  })
+  @ApiParam({
+    name: 'id',
+    schema: { type: 'string', format: 'uuid' },
+    example: '018f47a2-8b45-7cc2-9a1e-123456789abe',
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async publish(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest) {
     const version = this.parseVersion(body);
     return this.toResponse(
       await this.catalog.publishLot(req.identity!, id, version),
       req.identity!.sub,
     );
   }
-  @Post(':id/cancel') @Roles('producer', 'supplier') async cancel(
-    @Param('id') id: string,
-    @Body() body: unknown,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  @Post(':id/cancel')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Cancelar lote',
+    description: 'Cancela el lote cuando la transición de estado y version son válidas.',
+  })
+  @ApiParam({
+    name: 'id',
+    schema: { type: 'string', format: 'uuid' },
+    example: '018f47a2-8b45-7cc2-9a1e-123456789abe',
+  })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async cancel(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest) {
     const version = this.parseVersion(body);
     return this.toResponse(
       await this.catalog.cancelLot(req.identity!, id, version),

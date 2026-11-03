@@ -12,6 +12,7 @@ import { createLogger } from '../src/shared/infra/logger.js';
 import { NestPinoLogger } from '../src/shared/infra/nest-pino-logger.js';
 import { DATABASE_POOL } from '../src/shared/infra/tokens.js';
 import pg from 'pg';
+import { findJsonScalarPaths, parseJsonLines } from './helpers/json-values.js';
 
 const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
@@ -136,16 +137,20 @@ describePostgres('identity logging redaction across the full flow', () => {
     stderrSpy = undefined;
     const output = `${loggerOutput}${processOutput}`;
     const probeLine = output.split('\n').find((line) => line.includes('redaction probe')) as string;
+    const logRecords = parseJsonLines(output);
 
     expect(probeLine).toContain('[REDACTED]');
-    expect(output).not.toContain(`+57${phone}`);
-    expect(output).not.toContain(`code=${code}`);
-    expect(output).not.toContain(`"otp":"${code}"`);
-    expect(output).not.toContain(accessToken);
-    expect(output).not.toContain(refreshToken);
-    expect(output).not.toContain(rotatedRefresh);
+    for (const secret of [
+      `+57${phone}`,
+      code,
+      accessToken,
+      refreshToken,
+      rotatedRefresh,
+      '127.0.0.1',
+      '203.0.113.9',
+    ]) {
+      expect(findJsonScalarPaths(logRecords, secret)).toEqual([]);
+    }
     expect(output).not.toContain('Bearer ');
-    expect(output).not.toContain('127.0.0.1');
-    expect(output).not.toContain('203.0.113.9');
   });
 });

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Body, Controller, Headers, HttpCode, Inject, Post, Res } from '@nestjs/common';
-import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeEndpoint, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import type pino from 'pino';
 import { APP_ENVIRONMENT, APP_LOGGER } from '../../../../shared/infra/tokens.js';
@@ -40,6 +40,30 @@ export class TelegramWebhookController {
 
   @Post('telegram')
   @HttpCode(200)
+  @ApiOperation({
+    summary: 'Telegram webhook interno',
+    description:
+      'Endpoint de integración interno para Telegram. Telegram debe enviar el secreto configurado en la cabecera x-telegram-bot-api-secret-token. Se excluye deliberadamente del documento visible de Swagger; los consumidores son exclusivamente el webhook configurado en Telegram.',
+  })
+  @ApiHeader({
+    name: 'x-telegram-bot-api-secret-token',
+    required: true,
+    description: 'Secreto de webhook configurado fuera del repositorio.',
+    schema: { type: 'string' },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Update aceptado.',
+    schema: { type: 'object', properties: { ok: { type: 'boolean', enum: [true] } } },
+    example: { ok: true },
+  })
+  @ApiResponse({ status: 401, description: 'Secreto ausente o inválido. El cuerpo es vacío.' })
+  @ApiResponse({
+    status: 500,
+    description: 'Fallo procesando el update.',
+    schema: { type: 'object', properties: { ok: { type: 'boolean', enum: [false] } } },
+    example: { ok: false },
+  })
   @ApiExcludeEndpoint()
   async handle(
     @Headers('x-telegram-bot-api-secret-token') secretToken: string | undefined,

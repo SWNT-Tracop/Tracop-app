@@ -8,6 +8,7 @@ import type {
 import { PhoneNumber } from '../src/modules/identity/domain/phone-number.js';
 import { createLogger } from '../src/shared/infra/logger.js';
 import { FakeMessagingAdapter } from './support/fake-messaging.js';
+import { findJsonScalarPaths, parseJsonLines } from './helpers/json-values.js';
 
 class FakeIdentityChannel implements IdentityChannelApplication {
   link: IdentityChannelLink | null = null;
@@ -81,6 +82,6 @@ describe('Telegram OTP sender', () => {
     ).resolves.toBeUndefined();
 
     expect(read()).toContain('otp_delivery_failed');
-    expect(read()).not.toContain('900001');
+    expect(findJsonScalarPaths(parseJsonLines(read()), '900001')).toEqual([]);
   });
 });
