@@ -627,7 +627,7 @@ pnpm test:contract        # contratos de puertos
 pnpm db:generate          # drizzle-kit: generar migración
 pnpm db:migrate           # aplicar migraciones
 pnpm db:seed              # usuarios sintéticos; solo NODE_ENV=development
-pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role admin # CLI protegido
+pnpm identity:create-staff --phone "+57 300 000 0000" --name "Nombre" --role admin # CLI protegido
 pnpm build                # build de todo
 ```
 

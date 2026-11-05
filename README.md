@@ -29,7 +29,7 @@ La API queda disponible en `http://localhost:3000/health`; OpenAPI está en `/do
 2. Envía `/newbot` y sigue las indicaciones:
    - **Nombre**: el que verán los usuarios (ej. "TRACOP Demo").
    - **Username**: debe terminar en `bot` (ej. `tracop_demo_bot`). Guárdalo: es `TELEGRAM_BOT_USERNAME`.
-3. @BotFather te dará el **token** (ej. `123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ`). Guárdalo: es `TELEGRAM_BOT_TOKEN`.
+3. @BotFather te dará el **token**. En esta guía se representa como `<TELEGRAM_BOT_TOKEN>`; reemplaza el marcador por el valor que te entregue BotFather y no lo compartas.
 
 ### 2. Variables de entorno obligatorias
 
@@ -37,7 +37,7 @@ Edita `.env` y completa:
 
 ```env
 TELEGRAM_MODE=webhook
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+TELEGRAM_BOT_TOKEN=<TELEGRAM_BOT_TOKEN>
 TELEGRAM_WEBHOOK_SECRET=un_secreto_largo_aleatorio_para_validar_webhook
 TELEGRAM_BOT_USERNAME=tracop_demo_bot
 TELEGRAM_API_ROOT=https://api.telegram.org
@@ -115,7 +115,7 @@ Variables JWT relevantes (ver `.env.example`):
 Los roles internos (`operator`, `finance`, `admin`) se crean por CLI o seed, nunca por HTTP:
 
 ```bash
-pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role operator
+pnpm identity:create-staff --phone "+57 300 000 0000" --name "Nombre" --role operator
 # En producción exige --confirm; el comando se rechaza con NODE_ENV=test.
 ```
 
