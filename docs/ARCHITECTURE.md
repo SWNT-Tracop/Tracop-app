@@ -16,11 +16,23 @@ Las consultas de lotes incluyen filtros de categoría/producto, texto, precio, d
 
 La respuesta de lote elimina siempre `providerId`, latitud y longitud del objeto público; las coordenadas solo se añaden cuando el viewer es el proveedor propietario. El cálculo de distancia puede incluir `distanceKm`, sin revelar coordenadas del lote. La búsqueda aplica un límite por usuario con `InMemorySearchRateLimiter`, contadores en proceso y ventana fija; sus umbrales y radio máximo vienen de `CATALOG_SEARCH_RATE_LIMIT`, `CATALOG_SEARCH_RATE_WINDOW_SECONDS` y `CATALOG_SEARCH_RADIUS_MAX_KM`.
 
+`ChangeRecorderPort` is part of the catalog public surface (`catalog/index.ts`). Catalog records category, product, and lot changes after successful mutations, within the catalog unit of work. In the running application, `CatalogChangeRecorderAdapter` in bootstrap delegates `record` and `recordBaselineIfAbsent` to the public `SyncRepositoryPort`; the adapter does not access sync tables directly. Catalog backfill uses `recordBaselineIfAbsent` so it only inserts an initial change when that entity has no recorded history.
+
 ### `ProviderDirectoryPort`
 
 `LotsController` usa `ProviderDirectoryPort` para enriquecer respuestas con el resumen público del proveedor. El catálogo define el puerto en su superficie pública; `bootstrap/catalog-bridge.module.ts` implementa `IdentityProviderDirectoryAdapter`, que delega a `ProviderProfileService` expuesto por `identity/index.ts`. Así, el catálogo no importa internals ni consulta tablas de identidad.
 
 La decisión del núcleo de catálogo está en [ADR-010](adr/ADR-010.md).
+
+## Sync
+
+`sync` exposes authenticated `POST /sync/push` and `GET /sync/pull`. Push validates up to 50 operations, processes them in received order, and returns an individual `applied`, `rejected`, or `conflict` result. Pull uses an opaque-to-the-client numeric `server_seq` cursor and returns changes visible to the authenticated user (owner-scoped changes plus changes with no owner). The current endpoint documentation explicitly excludes retention/compaction, public catalog offline data, photo sync, and a periodic worker.
+
+`SyncService` uses `SyncOperationHandlerRegistry`, keyed by entity, to dispatch operations through `SyncOperationHandlerPort`. The handler interface is exported from `sync/index.ts`; modules do not import another module's internals. `CatalogLotSyncHandler` is registered by `CatalogSyncBridgeModule` in `bootstrap/` and delegates lot create, update, transition, and delete operations to the public `CatalogService`. It validates operation payloads and versions and reports server versions; unsupported lot transitions are rejected. No other entity handler is wired there.
+
+Catalog changes and sync operation bookkeeping share a PostgreSQL transaction. `DrizzleUnitOfWork`, `SyncUnitOfWork`, and the catalog unit of work all delegate to `DatabaseService.transaction`. `DatabaseService` stores the active Drizzle transaction in `AsyncLocalStorage`; nested calls reuse that transaction, and repository calls through `DatabaseService.current()` therefore participate in it. For a push operation, this keeps the catalog mutation, its recorded change-log row, and the processed-operation result atomic. Failures that escape the operation transaction roll it back; handler errors are mapped to rejected/conflict results and persisted as processed outcomes.
+
+`DrizzleSyncRepository` uses transaction-scoped PostgreSQL advisory locks. Push acquires an operation lock by `opId` before checking `processed_operations`, serializing concurrent retries of the same ID; it then checks the authenticated user and a canonical payload hash to return an identical prior result or reject reuse. Change appends and baseline checks acquire a separate sequence lock immediately before sequence allocation/insertion. This protects ordered `server_seq` allocation for pull pagination. The repository persists idempotency results in `sync.processed_operations` and changes in `sync.change_log`.
 
 ### Lot photos
 
@@ -149,15 +161,16 @@ Cada módulo es dueño de sus datos. La migración inicial creó schemas para `i
 
 `apps/api/src/bootstrap/` es el único lugar donde se conectan puertos con adaptadores concretos. Ningún módulo conoce los adaptadores de otro; `bootstrap/` importa `index.ts` de cada módulo y wirea:
 
-| Archivo                          | Qué conecta                                                                                                                                           |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule` y el puente del catálogo.               |
-| `identity-bridge.module.ts`      | Expone `IdentityChannelApplication` (puerto de aplicación de `identity`) para que `bootstrap/` pueda adaptarlo.                                       |
-| `catalog-bridge.module.ts`       | Implementa `ProviderDirectoryPort` mediante `IdentityProviderDirectoryAdapter`, delegando a `ProviderProfileService` de `identity`.                   |
-| `otp-delivery.module.ts`         | Selecciona `OtpSenderPort` según `OTP_SENDER`: `InMemoryOtpSender` (test), `DevelopmentOtpSender` (consola, dev), `TelegramOtpSender` (producción).   |
-| `telegram-otp-sender.adapter.ts` | Implementa `OtpSenderPort` usando `IdentityChannelApplication.findActiveChannelLinkByPhone` + `MessagingPort.sendText`. Fire-and-forget, sin bloqueo. |
-| `identity-channel.adapter.ts`    | Implementa `ChannelIdentityPort` (de `messaging`) delegando a `IdentityChannelApplication`.                                                           |
-| `http.ts`                        | Configuración global de Nest (prefijo, validación, throttler, CORS, Swagger).                                                                         |
+| Archivo                          | Qué conecta                                                                                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule` y el puente del catálogo.                      |
+| `identity-bridge.module.ts`      | Expone `IdentityChannelApplication` (puerto de aplicación de `identity`) para que `bootstrap/` pueda adaptarlo.                                              |
+| `catalog-bridge.module.ts`       | Implementa `ProviderDirectoryPort` mediante `IdentityProviderDirectoryAdapter`, delegando a `ProviderProfileService` de `identity`.                          |
+| `catalog-sync-bridge.module.ts`  | Proporciona `CatalogChangeRecorderAdapter` para el puerto público `ChangeRecorderPort` y registra `CatalogLotSyncHandler` en `SyncOperationHandlerRegistry`. |
+| `otp-delivery.module.ts`         | Selecciona `OtpSenderPort` según `OTP_SENDER`: `InMemoryOtpSender` (test), `DevelopmentOtpSender` (consola, dev), `TelegramOtpSender` (producción).          |
+| `telegram-otp-sender.adapter.ts` | Implementa `OtpSenderPort` usando `IdentityChannelApplication.findActiveChannelLinkByPhone` + `MessagingPort.sendText`. Fire-and-forget, sin bloqueo.        |
+| `identity-channel.adapter.ts`    | Implementa `ChannelIdentityPort` (de `messaging`) delegando a `IdentityChannelApplication`.                                                                  |
+| `http.ts`                        | Configuración global de Nest (prefijo, validación, throttler, CORS, Swagger).                                                                                |
 
 **Regla**: los módulos **no** importan `bootstrap/`. `bootstrap/` importa solo `index.ts` públicos. Los adaptadores en `bootstrap/` son los únicos que cruzan límites de módulo.
 
