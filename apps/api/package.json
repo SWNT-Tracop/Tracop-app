@@ -16,6 +16,7 @@
     "identity:create-staff": "tsx scripts/create-staff.ts",
     "telegram:set-webhook": "tsx scripts/set-telegram-webhook.ts",
     "catalog:expire-lots": "tsx scripts/expire-lots.ts",
+    "catalog:backfill-changes": "tsx scripts/backfill-catalog-changes.ts",
     "catalog:purge-orphan-photos": "tsx scripts/purge-orphan-photos.ts",
     "openapi:export": "pnpm --filter @tracop/contracts build && tsx scripts/export-openapi.ts",
     "openapi:check": "pnpm --filter @tracop/contracts build && tsx scripts/export-openapi.ts --check"

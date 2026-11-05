@@ -64,6 +64,12 @@ describe('catalog application', () => {
     },
     findExpired: async (now) =>
       [...lots.values()].filter((lot) => lot.status === 'published' && lot.availableUntil < now),
+    findAllForChangeBackfill: async () => [...lots.values()],
+    softDelete: async (item, expectedVersion) => {
+      if (lots.get(item.id)?.version !== expectedVersion) return false;
+      lots.delete(item.id);
+      return true;
+    },
   };
   const uow: CatalogUnitOfWork = { run: async (operation) => operation() };
   const eventWriter: CatalogEventWriter = {
@@ -144,6 +150,77 @@ describe('catalog application', () => {
     await expect(service.cancelLot(actor, lotInput.id, 1)).rejects.toMatchObject({
       code: 'version_conflict',
     });
+  });
+
+  it('soft-deletes only a draft, emits a tombstone, and hides it from provider listings', async () => {
+    const changes: Array<{ op: string; payload: Record<string, unknown> }> = [];
+    const recorder = {
+      record: async (change: { op: string; payload: Record<string, unknown> }) => {
+        changes.push(change);
+        return '1';
+      },
+      recordBaselineIfAbsent: async () => null,
+    };
+    const deletionService = new CatalogService(
+      categoryRepository,
+      productRepository,
+      lotRepository,
+      uow,
+      eventWriter,
+      clock,
+      directory,
+      { lotHorizonDays: 90 },
+      recorder,
+    );
+    await deletionService.createLot(actor, lotInput);
+    const deleted = await deletionService.deleteLot(actor, lotInput.id, 1);
+    expect(deleted.version).toBe(2);
+    expect(changes.at(-1)).toMatchObject({
+      op: 'delete',
+      payload: { id: lotInput.id, version: 2, tombstone: true },
+    });
+    expect(await deletionService.getMyLots(actor)).toEqual([]);
+    await expect(deletionService.deleteLot(actor, lotInput.id, 2)).rejects.toMatchObject({
+      code: 'not_found',
+    });
+  });
+
+  it('backfills existing catalog rows idempotently with baseline payloads', async () => {
+    const baseline = new Set<string>();
+    const recorder = {
+      record: async () => '1',
+      recordBaselineIfAbsent: async (change: { entity: string; entityId: string }) => {
+        const key = `${change.entity}:${change.entityId}`;
+        if (baseline.has(key)) return null;
+        baseline.add(key);
+        return String(baseline.size);
+      },
+    };
+    const backfillService = new CatalogService(
+      categoryRepository,
+      productRepository,
+      lotRepository,
+      uow,
+      eventWriter,
+      clock,
+      directory,
+      { lotHorizonDays: 90 },
+      recorder,
+    );
+    categories.set('existing-category', {
+      id: 'existing-category',
+      name: 'Tubérculos',
+      parentId: null,
+      depth: 1,
+    });
+    lots.set(lotInput.id, {
+      ...lotInput,
+      providerId: actor.sub,
+      status: 'draft',
+      version: 1,
+    });
+    expect(await backfillService.backfillChanges()).toEqual({ recorded: 3, skipped: 0 });
+    expect(await backfillService.backfillChanges()).toEqual({ recorded: 0, skipped: 3 });
   });
 
   it('requires provider profile at publish, not at draft creation', async () => {

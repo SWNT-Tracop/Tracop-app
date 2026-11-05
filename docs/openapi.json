@@ -3251,6 +3251,90 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  },
+                  "productId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "quantityMilli": {
+                    "type": "string",
+                    "pattern": "^[1-9]\\d{0,11}$"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "kg",
+                      "g",
+                      "lb",
+                      "und",
+                      "docena",
+                      "arroba",
+                      "quintal",
+                      "caja",
+                      "mano",
+                      "bulto"
+                    ]
+                  },
+                  "unitPrice": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  },
+                  "qualityGrade": {
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "availableFrom": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "availableUntil": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "locationLat": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "locationLng": {
+                    "type": "number",
+                    "minimum": -180,
+                    "maximum": 180
+                  }
+                },
+                "required": ["version"],
+                "additionalProperties": false
+              },
+              "examples": {
+                "synthetic": {
+                  "summary": "Ejemplo sintético",
+                  "value": {
+                    "version": 1,
+                    "unitPrice": 3200
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "400": {
             "description": "La solicitud no cumple el contrato o una regla de entrada.",
@@ -3411,6 +3495,210 @@
           }
         ],
         "summary": "Actualizar lote",
+        "tags": ["lots"]
+      },
+      "delete": {
+        "description": "Elimina lógicamente solo un lote en borrador, marca sus fotos como borradas y publica un tombstone para sync. Para lotes publicados usa cancelar.",
+        "operationId": "LotsController_deleteLot",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["version"],
+                "additionalProperties": false
+              },
+              "examples": {
+                "synthetic": {
+                  "summary": "Ejemplo sintético",
+                  "value": {
+                    "version": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "La solicitud no cumple el contrato o una regla de entrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Solicitud inválida."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta autenticación o las credenciales/sesión no son válidas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 401
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Autenticación requerida."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "El rol autenticado no está autorizado para esta operación.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 403
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "No tienes permiso para este recurso."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "El recurso solicitado no existe o no es visible para este usuario.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 404
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 404,
+                  "code": "not_found",
+                  "message": "Recurso no encontrado."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La solicitud entra en conflicto con el estado actual del recurso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 409
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 409,
+                  "code": "version_conflict",
+                  "message": "Conflicto de versión."
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Eliminar borrador de lote",
         "tags": ["lots"]
       }
     },
@@ -4853,6 +5141,491 @@
         ],
         "summary": "Cancelar lote",
         "tags": ["lots"]
+      }
+    },
+    "/sync/push": {
+      "post": {
+        "description": "Aplica hasta 50 operaciones en el orden recibido. deviceId siempre procede de la sesión autenticada.",
+        "operationId": "SyncController_push",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "operations": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "opId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "entity": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "entityId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": ["create", "update", "transition", "delete"]
+                        },
+                        "payload": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        },
+                        "baseVersion": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["opId", "entity", "entityId", "type", "payload"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["operations"],
+                "additionalProperties": false
+              },
+              "examples": {
+                "synthetic": {
+                  "summary": "Ejemplo sintético",
+                  "value": {
+                    "operations": [
+                      {
+                        "opId": "0190f47a-8b45-7cc2-9a1e-123456789abc",
+                        "entity": "lot",
+                        "entityId": "0190f47a-8b45-7cc2-9a1e-123456789abd",
+                        "type": "create",
+                        "payload": {}
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Respuesta correcta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "opId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["applied", "rejected", "conflict"]
+                          },
+                          "code": {
+                            "type": "string",
+                            "enum": [
+                              "invalid_payload",
+                              "unknown_entity",
+                              "not_found",
+                              "forbidden",
+                              "version_conflict",
+                              "invalid_transition",
+                              "unsupported_transition",
+                              "dependency_failed",
+                              "op_id_reused"
+                            ]
+                          },
+                          "serverVersion": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true,
+                            "maximum": 9007199254740991
+                          },
+                          "serverSeq": {
+                            "type": "string",
+                            "pattern": "^[1-9]\\d*$"
+                          }
+                        },
+                        "required": ["opId", "status"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["results"],
+                  "additionalProperties": false
+                },
+                "example": {
+                  "results": [
+                    {
+                      "opId": "0190f47a-8b45-7cc2-9a1e-123456789abc",
+                      "status": "applied",
+                      "serverVersion": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "La solicitud no cumple el contrato o una regla de entrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Solicitud inválida."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta autenticación o las credenciales/sesión no son válidas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 401
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Autenticación requerida."
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "El cuerpo excede el límite configurado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 413
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 413,
+                  "message": "Solicitud demasiado grande."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Se excedió un límite de solicitudes. Puede incluir la cabecera Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos hasta que se permita reintentar.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 429
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 429,
+                  "code": "rate_limited",
+                  "message": "Demasiadas solicitudes. Intenta nuevamente más tarde."
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aplicar operaciones offline",
+        "tags": ["sync"]
+      }
+    },
+    "/sync/pull": {
+      "get": {
+        "description": "El cursor es server_seq, no una fecha. Aplique un cambio solo si su versión es mayor que la versión local; el flujo incluye cambios originados por este mismo dispositivo. Fuera de este corte: retención/compactación de change_log y processed_operations, catálogo público offline, fotos en sync y worker periódico.",
+        "operationId": "SyncController_pull",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 200
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Respuesta correcta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "changes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "serverSeq": {
+                            "type": "string",
+                            "pattern": "^[1-9]\\d*$"
+                          },
+                          "entity": {
+                            "type": "string"
+                          },
+                          "entityId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "op": {
+                            "type": "string"
+                          },
+                          "payload": {
+                            "type": "object",
+                            "additionalProperties": {}
+                          },
+                          "occurredAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          }
+                        },
+                        "required": [
+                          "serverSeq",
+                          "entity",
+                          "entityId",
+                          "op",
+                          "payload",
+                          "occurredAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "pattern": "^(0|[1-9]\\d{0,18})$"
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["changes", "nextCursor", "hasMore"],
+                  "additionalProperties": false
+                },
+                "example": {
+                  "changes": [],
+                  "nextCursor": "0",
+                  "hasMore": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "La solicitud no cumple el contrato o una regla de entrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 400
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Solicitud inválida."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Falta autenticación o las credenciales/sesión no son válidas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 401
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Autenticación requerida."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Se excedió un límite de solicitudes. Puede incluir la cabecera Retry-After.",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos hasta que se permita reintentar.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["statusCode", "message"],
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 429
+                    },
+                    "code": {
+                      "type": "string",
+                      "description": "Código de dominio, si aplica."
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Solicitud inválida."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "example": {
+                  "statusCode": 429,
+                  "code": "rate_limited",
+                  "message": "Demasiadas solicitudes. Intenta nuevamente más tarde."
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener cambios sincronizables",
+        "tags": ["sync"]
       }
     }
   },

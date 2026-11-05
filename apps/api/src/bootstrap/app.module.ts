@@ -7,6 +7,8 @@ import { IdentityBridgeModule } from './identity-bridge.module.js';
 import { OtpDeliveryModule } from './otp-delivery.module.js';
 import { CatalogModule } from '../modules/catalog/index.js';
 import { CatalogBridgeModule } from './catalog-bridge.module.js';
+import { SyncModule } from '../modules/sync/index.js';
+import { CatalogSyncBridgeModule } from './catalog-sync-bridge.module.js';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('health')
@@ -44,7 +46,9 @@ class HealthController {
     SharedInfraModule,
     AuthModule,
     CatalogBridgeModule,
+    CatalogSyncBridgeModule,
     CatalogModule,
+    SyncModule,
     IdentityBridgeModule,
     MessagingModule,
     IdentityModule,

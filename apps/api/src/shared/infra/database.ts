@@ -26,6 +26,8 @@ export class DatabaseService implements OnApplicationShutdown {
   }
 
   async transaction<T>(operation: () => Promise<T>): Promise<T> {
+    const current = this.transactions.getStore();
+    if (current) return operation();
     return this.db.transaction((transaction) => this.transactions.run(transaction, operation));
   }
 

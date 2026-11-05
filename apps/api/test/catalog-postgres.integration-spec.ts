@@ -11,12 +11,14 @@ import { createId } from '../src/shared/kernel/ids.js';
 import { DATABASE_POOL } from '../src/shared/infra/tokens.js';
 import { APP_CLOCK } from '../src/shared/infra/tokens.js';
 import { describePostgres } from './postgres-suite.js';
+import { SyncService } from '../src/modules/sync/index.js';
 
 describePostgres('catalog repositories and use cases (shared PostgreSQL Testcontainers)', () => {
   let app: INestApplicationContext;
   let pool: pg.Pool;
   let catalog: CatalogService;
   let profiles: ProviderProfileService;
+  let sync: SyncService;
   const now = new Date('2026-10-30T12:00:00.000Z');
   const staff = { sub: '00000000-0000-7000-8000-000000000001', role: 'operator' };
   const producer = { sub: '00000000-0000-7000-8000-000000000002', role: 'producer' };
@@ -27,7 +29,8 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
   let otherProductId: string;
 
   const resetTables = async () => {
-    await pool.query(`TRUNCATE catalog.lot_photos, catalog.lots, catalog.products, catalog.categories,
+    await pool.query(`TRUNCATE sync.processed_operations, sync.change_log,
+      catalog.lot_photos, catalog.lots, catalog.products, catalog.categories,
       identity.provider_profiles, identity.consents, identity.otp_codes, identity.sessions,
       identity.devices, identity.channel_links, identity.users, shared.outbox_events CASCADE`);
   };
@@ -73,6 +76,7 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     pool = app.get(DATABASE_POOL) as pg.Pool;
     catalog = app.get(CatalogService);
     profiles = app.get(PROVIDER_PROFILE_SERVICE) as ProviderProfileService;
+    sync = app.get(SyncService);
   });
 
   beforeEach(async () => {
@@ -161,6 +165,251 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
       radiusKm: 10,
     });
     expect(result.items.map(({ lot }) => lot.id)).toEqual([matching.id]);
+  });
+
+  it('backfills pre-existing catalog rows with reusable payload builders and skips them on rerun', async () => {
+    const existingDraft = await createLot({ publish: false });
+    await pool.query('TRUNCATE sync.change_log');
+
+    const first = await catalog.backfillChanges();
+    const lotRow = await pool.query(
+      `SELECT op, owner_user_id, payload FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1`,
+      [existingDraft.id],
+    );
+    const second = await catalog.backfillChanges();
+
+    expect(lotRow.rows).toHaveLength(1);
+    expect(lotRow.rows[0]).toMatchObject({
+      op: 'upsert',
+      owner_user_id: producer.sub,
+      payload: { id: existingDraft.id, version: 1, status: 'draft' },
+    });
+    expect(first.recorded).toBeGreaterThan(0);
+    expect(second).toEqual({ recorded: 0, skipped: first.recorded });
+  });
+
+  it('soft-deletes a draft and its photos atomically while publishing a tombstone', async () => {
+    const draft = await createLot({ publish: false });
+    const photoId = createId();
+    await pool.query(
+      `INSERT INTO catalog.lot_photos (id, lot_id, media_ref, created_at, state, position, expires_at)
+       VALUES ($1, $2, 'photos/synthetic-delete.webp', $3, 'pending', 1, $4)`,
+      [photoId, draft.id, now, new Date(now.getTime() + 86_400_000)],
+    );
+
+    const deleted = await catalog.deleteLot(producer, draft.id, draft.version);
+    const rows = await pool.query(
+      `SELECT p.deleted_at AS photo_deleted_at, l.deleted_at AS lot_deleted_at
+       FROM catalog.lot_photos p JOIN catalog.lots l ON l.id = p.lot_id WHERE p.id = $1`,
+      [photoId],
+    );
+    const tombstone = await pool.query(
+      `SELECT payload FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1 AND op = 'delete'`,
+      [draft.id],
+    );
+    expect(deleted.version).toBe(draft.version + 1);
+    expect(rows.rows[0].photo_deleted_at).toBeInstanceOf(Date);
+    expect(rows.rows[0].lot_deleted_at).toBeInstanceOf(Date);
+    expect(tombstone.rows[0].payload).toEqual({
+      id: draft.id,
+      version: deleted.version,
+      tombstone: true,
+    });
+  });
+
+  it('applies create, edit, edit, publish versions in one ordered push and shares changes across two devices', async () => {
+    const lotId = createId();
+    const create = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'create' as const,
+      payload: {
+        id: lotId,
+        productId,
+        quantityMilli: '10000',
+        unit: 'kg',
+        unitPrice: 1000,
+        qualityGrade: null,
+        availableFrom: now.toISOString(),
+        availableUntil: new Date(now.getTime() + 86_400_000).toISOString(),
+        locationLat: 5.5,
+        locationLng: -73.4,
+      },
+    };
+    const updateOne = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'update' as const,
+      baseVersion: 1,
+      payload: { unitPrice: 1200 },
+    };
+    const updateTwo = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'update' as const,
+      baseVersion: 2,
+      payload: { quantityMilli: '12000' },
+    };
+    const publish = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'transition' as const,
+      baseVersion: 3,
+      payload: { status: 'published' },
+    };
+
+    const applied = await sync.push({ ...producer, did: createId() }, [
+      create,
+      updateOne,
+      updateTwo,
+      publish,
+    ]);
+    expect(applied.results.map((result) => [result.status, result.serverVersion])).toEqual([
+      ['applied', 1],
+      ['applied', 2],
+      ['applied', 3],
+      ['applied', 4],
+    ]);
+    const deviceA = await sync.pull({ ...producer, did: createId() }, '0', 20);
+    const deviceB = await sync.pull({ ...producer, did: createId() }, '0', 20);
+    const anotherProvider = await sync.pull(
+      { sub: '00000000-0000-7000-8000-000000000004', role: 'producer', did: createId() },
+      '0',
+      20,
+    );
+    expect(
+      deviceA.changes
+        .filter((change) => change.entityId === lotId)
+        .map((change) => change.payload.version),
+    ).toEqual([1, 2, 3, 4]);
+    expect(deviceB.changes).toEqual(deviceA.changes);
+    expect(
+      anotherProvider.changes
+        .filter((change) => change.entityId === lotId)
+        .map((change) => change.payload.version),
+    ).toEqual([4]);
+  });
+
+  it('rejects dependent operations deterministically after an intermediate version conflict', async () => {
+    const lot = await createLot({ publish: false });
+    const failedEdit = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lot.id,
+      type: 'update' as const,
+      baseVersion: 9,
+      payload: { unitPrice: 2000 },
+    };
+    const dependentEdit = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lot.id,
+      type: 'update' as const,
+      baseVersion: 1,
+      payload: { unitPrice: 2200 },
+    };
+    const result = await sync.push({ ...producer, did: createId() }, [failedEdit, dependentEdit]);
+    expect(result.results.map(({ status, code }) => [status, code])).toEqual([
+      ['conflict', 'version_conflict'],
+      ['rejected', 'dependency_failed'],
+    ]);
+  });
+
+  it.each(['reserved', 'sold_out', 'expired'] as const)(
+    'rejects client-requested %s transitions with a typed code',
+    async (status) => {
+      const lot = await createLot({ publish: false });
+      const response = await sync.push({ ...producer, did: createId() }, [
+        {
+          opId: createId(),
+          entity: 'lot',
+          entityId: lot.id,
+          type: 'transition',
+          baseVersion: 1,
+          payload: { status },
+        },
+      ]);
+      expect(response.results[0]).toMatchObject({
+        status: 'rejected',
+        code: 'unsupported_transition',
+      });
+    },
+  );
+
+  it('serializes concurrent duplicate opIds and hides stored results from a different user', async () => {
+    const lotId = createId();
+    const operation = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'create' as const,
+      payload: {
+        id: lotId,
+        productId,
+        quantityMilli: '10000',
+        unit: 'kg',
+        unitPrice: 1000,
+        qualityGrade: null,
+        availableFrom: now.toISOString(),
+        availableUntil: new Date(now.getTime() + 86_400_000).toISOString(),
+        locationLat: 5.5,
+        locationLng: -73.4,
+      },
+    };
+    const duplicateResults = await Promise.all([
+      sync.push({ ...producer, did: createId() }, [operation]),
+      sync.push({ ...producer, did: createId() }, [operation]),
+    ]);
+    expect(duplicateResults[0]).toEqual(duplicateResults[1]);
+
+    const otherUserResult = await sync.push(
+      { sub: '00000000-0000-7000-8000-000000000004', role: 'producer', did: createId() },
+      [operation],
+    );
+    expect(otherUserResult.results[0]).toEqual({ opId: operation.opId, status: 'rejected' });
+  });
+
+  it('does not deadlock concurrent REST and sync writes to the same lot', async () => {
+    const lotId = createId();
+    const input = {
+      id: lotId,
+      productId,
+      quantityMilli: 10_000n,
+      unit: 'kg' as const,
+      unitPrice: 1000n,
+      qualityGrade: null,
+      availableFrom: now,
+      availableUntil: new Date(now.getTime() + 86_400_000),
+      locationLat: 5.5,
+      locationLng: -73.4,
+    };
+    const operation = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'create' as const,
+      payload: {
+        ...input,
+        quantityMilli: input.quantityMilli.toString(),
+        unitPrice: Number(input.unitPrice),
+        availableFrom: input.availableFrom.toISOString(),
+        availableUntil: input.availableUntil.toISOString(),
+      },
+    };
+    const mixed = await Promise.allSettled([
+      catalog.createLot(producer, input),
+      sync.push({ ...producer, did: createId() }, [operation]),
+    ]);
+    expect(mixed.every((result) => result.status === 'fulfilled')).toBe(true);
+    const stored = await pool.query(
+      'SELECT count(*)::int AS count FROM catalog.lots WHERE id = $1',
+      [lotId],
+    );
+    expect(stored.rows[0].count).toBe(1);
   });
 
   it.each(['price', 'distance', 'availability', 'recent'] as const)(

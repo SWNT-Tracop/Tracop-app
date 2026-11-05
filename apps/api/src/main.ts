@@ -13,7 +13,7 @@ const bootstrap = async (): Promise<void> => {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
-  configureHttp(app);
+  configureHttp(app, environment.SYNC_PUSH_MAX_BODY_BYTES);
   app.useLogger(new NestPinoLogger(app.get(APP_LOGGER)));
   app.getHttpAdapter().getInstance().set('trust proxy', environment.TRUST_PROXY);
   app.enableShutdownHooks();

@@ -3,6 +3,7 @@ import { SharedInfraModule } from '../../shared/infra/shared-infra.module.js';
 import { APP_ENVIRONMENT } from '../../shared/infra/tokens.js';
 import type { AppEnvironment } from '../../shared/infra/env.js';
 import { CatalogService, CATALOG_SETTINGS } from './application/catalog-service.js';
+import { DeleteLot } from './application/delete-lot.js';
 import { LotPhotoService } from './application/lot-photo-service.js';
 import { CatalogController, LotsController } from './adapters/in/catalog.controller.js';
 import {
@@ -25,6 +26,7 @@ import {
   CATALOG_LOT_REPOSITORY,
   CATALOG_PRODUCT_REPOSITORY,
   CATALOG_UNIT_OF_WORK,
+  CHANGE_RECORDER,
   PROVIDER_DIRECTORY,
 } from './ports/catalog-ports.js';
 import {
@@ -125,9 +127,12 @@ import { STORAGE_PORT, type StoragePort } from './ports/storage-port.js';
         CATALOG_CLOCK,
         PROVIDER_DIRECTORY,
         CATALOG_SETTINGS,
+        CHANGE_RECORDER,
+        LOT_PHOTO_REPOSITORY,
       ],
     },
+    DeleteLot,
   ],
-  exports: [CatalogService],
+  exports: [CatalogService, DeleteLot],
 })
 export class CatalogModule {}
