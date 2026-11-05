@@ -29,7 +29,7 @@ La API queda disponible en `http://localhost:3000/health`; OpenAPI está en `/do
 2. Envía `/newbot` y sigue las indicaciones:
    - **Nombre**: el que verán los usuarios (ej. "TRACOP Demo").
    - **Username**: debe terminar en `bot` (ej. `tracop_demo_bot`). Guárdalo: es `TELEGRAM_BOT_USERNAME`.
-3. @BotFather te dará el **token** (ej. `123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ`). Guárdalo: es `TELEGRAM_BOT_TOKEN`.
+3. @BotFather te dará el **token**. En esta guía se representa como `<TELEGRAM_BOT_TOKEN>`; reemplaza el marcador por el valor que te entregue BotFather y no lo compartas.
 
 ### 2. Variables de entorno obligatorias
 
@@ -37,7 +37,7 @@ Edita `.env` y completa:
 
 ```env
 TELEGRAM_MODE=webhook
-TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+TELEGRAM_BOT_TOKEN=<TELEGRAM_BOT_TOKEN>
 TELEGRAM_WEBHOOK_SECRET=un_secreto_largo_aleatorio_para_validar_webhook
 TELEGRAM_BOT_USERNAME=tracop_demo_bot
 TELEGRAM_API_ROOT=https://api.telegram.org
@@ -115,7 +115,7 @@ Variables JWT relevantes (ver `.env.example`):
 Los roles internos (`operator`, `finance`, `admin`) se crean por CLI o seed, nunca por HTTP:
 
 ```bash
-pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role operator
+pnpm identity:create-staff --phone "+57 300 000 0000" --name "Nombre" --role operator
 # En producción exige --confirm; el comando se rechaza con NODE_ENV=test.
 ```
 
@@ -133,6 +133,20 @@ Configuración del catálogo en `.env` (todos los valores tienen defaults):
 | `CATALOG_SEARCH_RATE_WINDOW_SECONDS` |    `60` | Duración de la ventana de rate limit de búsqueda.                                      |
 
 El rate limit de búsqueda se mantiene en memoria por proceso. Ver [arquitectura del catálogo](docs/ARCHITECTURE.md#catálogo) y [ADR-010](docs/adr/ADR-010.md).
+
+## Sincronización del catálogo (sync)
+
+La sincronización implementada cubre cambios de `category`, `product` y `lot`. `POST /sync/push` acepta entre 1 y 50 operaciones; actualmente solo hay manejador de push para `lot`. `GET /sync/pull` acepta páginas de 1 a 500 cambios y usa por defecto `limit=200` y `cursor=0`. Requiere autenticación.
+
+En pull, categorías y productos se registran como taxonomía global visible para usuarios autenticados; los cambios de lotes se entregan únicamente a su dueño. Esto no implementa un catálogo público offline: no hay pull público sin autenticación ni soporte de sincronización para otras entidades.
+
+Para inicializar el registro de cambios con el estado actual del catálogo, ejecuta:
+
+```bash
+pnpm catalog:backfill-changes
+```
+
+El comando registra cambios base para categorías, productos y lotes que aún no tengan historial, y reporta cuántos registró o saltó. No reemplaza el pull/push ni agrega manejadores de sincronización para otras entidades.
 
 ## Mensajería (messaging)
 

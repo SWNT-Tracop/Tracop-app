@@ -305,45 +305,45 @@ type InboundMessage = {
 
 ### Modelo
 
-- El móvil es un **thick client**: SQLite local es la fuente de lectura de la UI.
-- Toda mutación se escribe primero en la BD local **y** en la tabla `outbox` local, y la UI se actualiza de inmediato (optimista).
-- Un **motor de sync** vacía el outbox cuando hay conexión y luego hace _pull_ de cambios del servidor.
+- El cliente móvil es un **cliente grueso**: la interfaz lee los datos desde SQLite local. La outbox del cliente es la ruta prevista para las escrituras, pero el protocolo del servidor no define su esquema local ni la implementación de persistencia.
+- **Solo está implementada la sincronización del catálogo:** pull entrega cambios de catálogo para `category`, `product` y `lot`; push acepta operaciones únicamente para `lot`. No hay registrados manejadores para otras entidades. No se debe asumir compatibilidad con pedidos, check-ins ni pagos.
 
-### Operación de sincronización
+### Protocolo de sincronización implementado
+
+La API autenticada acepta `POST /sync/push` con entre 1 y 50 operaciones estrictas:
 
 ```ts
 type SyncOperation = {
-  opId: string; // UUID v7, clave de idempotencia
-  deviceId: string;
-  entity: string; // 'lot' | 'order' | 'pickup_checkin' | 'payment_proof' ...
-  entityId: string;
-  type: 'create' | 'update' | 'delete' | 'transition';
+  opId: string; // UUID v7; clave de idempotencia
+  entity: string; // 1–64 caracteres; actualmente solo 'lot' tiene un manejador de push
+  entityId: string; // UUID
+  type: 'create' | 'update' | 'transition' | 'delete';
   payload: Record<string, unknown>;
-  baseVersion?: number; // versión que el cliente conocía
-  clientTs: string; // ISO UTC
+  baseVersion?: number; // entero positivo, requerido para operaciones de lot que no sean create
 };
 ```
 
-- **Push:** `POST /sync/push` con un lote de operaciones. El servidor registra cada `opId` en `sync.processed_operations`; reenviar la misma operación es inocuo.
-- **Pull:** `GET /sync/pull?cursor=<server_seq>` devuelve cambios por entidad desde el cursor. El cursor es un entero monotónico del servidor, **no** un timestamp del cliente.
-- **Respuesta por operación:** `applied | rejected | conflict` con motivo. El cliente debe manejar los tres.
+- `deviceId` se obtiene de la sesión autenticada; la operación no lo envía. El contrato de la API no incluye un campo `clientTs`.
+- Las operaciones se procesan en el orden de la solicitud. Si se repite un `opId` con el mismo usuario y el mismo hash canónico del payload, se reproduce el resultado anterior; reutilizarlo con otro payload o entre usuarios distintos se rechaza. Una operación fallida bloquea las operaciones posteriores de la misma combinación `entity:entityId` en ese lote de push, pero no las de entidades independientes.
+- Las operaciones `update`, `transition` y `delete` de `lot` usan concurrencia optimista: el `baseVersion` de cada operación debe coincidir con la versión actual del servidor. Para una secuencia de cambios sobre un lote, se usa el `serverVersion` más reciente devuelto por cada operación exitosa como `baseVersion` de la siguiente. Si hay conflicto, se devuelve la versión del servidor cuando esté disponible. `create` no lleva `baseVersion`.
+- El actor debe ser dueño del lote: push requiere autenticación y delega en casos de uso del catálogo que verifican la propiedad. En `create`, el `id` del payload debe ser igual a `entityId`.
+- `GET /sync/pull?cursor=<server_seq>&limit=<1..500>` requiere autenticación y usa por defecto `cursor` `0` y `limit` `200`. El cursor es una secuencia entera del servidor, no una marca de tiempo del cliente. Pull devuelve filas con `server_seq > cursor`, en orden ascendente, cuyo `owner_user_id IS NULL` o coincide con el usuario autenticado. Incluye los cambios del dispositivo solicitante; los clientes aplican un cambio solo cuando la versión de su entidad es más reciente que la versión local.
+- `nextCursor` corresponde a la última secuencia devuelta si hay otra página; de lo contrario, avanza hasta el horizonte de secuencia global actual, incluso sobre filas filtradas por propiedad. Se debe guardar el cursor devuelto. `hasMore` indica si hay una página adicional.
+- Las respuestas distinguen `applied`, `rejected` y `conflict`. Los resultados de operaciones pueden incluir `code` y `serverVersion`; los cambios de pull contienen `serverSeq`, `entity`, `entityId`, `op`, `payload` y `occurredAt`.
+- Los borrados de lotes son lógicos y publican un cambio `delete` con `payload.tombstone: true`; quienes consumen estos cambios deben conservar/aplicar la marca de borrado para evitar que los registros eliminados reaparezcan. La cancelación de un lote es un cambio `cancel`, no una marca de borrado.
 
 ### Política de conflictos por tipo de dato
 
-| Dato                   | Política                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Perfil, preferencias   | Última escritura gana (por `server_seq`)                                                                                       |
-| Lote (edición)         | Optimistic concurrency con `version`; si difiere, conflicto → la UI muestra la versión del servidor y pide confirmar           |
-| Inventario / reserva   | **El servidor decide.** La reserva offline es provisional; puede ser rechazada                                                 |
-| Pedido y pago          | **Solo eventos append-only** (transiciones). Nunca se sobrescribe estado; se valida la transición contra la máquina de estados |
-| Check-ins de logística | Append-only con `clientTs`; el servidor ordena por `server_seq`                                                                |
+| Dato                   | Política                                                                                                                                                                          |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entidades del catálogo | Pull se ordena por `server_seq`; los cambios restringidos por propiedad solo se devuelven a su dueño. Las escrituras de `lot` usan concurrencia optimista mediante `baseVersion`. |
+| Otras entidades        | Actualmente no hay manejadores de push; no se debe interpretar la hoja de ruta general del producto como comportamiento vigente del protocolo.                                    |
 
 ### Reglas
 
-- Reintentos con espera exponencial; límite de operaciones por lote (p. ej. 50).
-- Una operación rechazada **no** bloquea las siguientes independientes.
-- Adjuntos (fotos, comprobantes): subida por separado en segundo plano con URL prefirmada; la operación referencia el `mediaRef`.
-- Pruebas obligatorias de los escenarios: sin conexión prolongada, reenvío duplicado, conflicto de versión, rechazo de reserva, caída a mitad del lote.
+- El límite de la solicitud push es de 50 operaciones; el tamaño máximo de una página pull es 500. Los reintentos/esperas progresivas y el comportamiento de la outbox local son responsabilidad del cliente y no están implementados en estos endpoints de la API.
+- Una operación rechazada o en conflicto no bloquea entidades independientes, pero las operaciones posteriores de la misma entidad en ese lote se rechazan por depender de ella.
+- La sincronización de fotos está fuera del endpoint de sync actual; no se debe asumir que la carga de archivos adjuntos forma parte de este protocolo.
 
 ---
 
@@ -369,7 +369,7 @@ PostgreSQL 16. **schema solo para módulos con datos propios.** Convenciones: `s
 - `categories` (id uuid, name text, parent_id uuid nullable, depth integer, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, deleted_at timestamptz nullable). `depth` está entre 1 y 3; nombre no vacío y máximo 100 caracteres.
 - `products` (id uuid, category_id uuid, name text, search_text text, unit text, attributes jsonb, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, deleted_at timestamptz nullable). Nombre no vacío y máximo 120 caracteres; atributos es un objeto. `search_text` contiene el nombre normalizado para búsquedas.
 - `lots` (id uuid, provider_id uuid, product_id uuid, quantity numeric(12,3), unit text, unit_price bigint, quality_grade text nullable, available_from timestamptz, available_until timestamptz, location_lat double precision, location_lng double precision, status text, version integer, created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, deleted_at timestamptz nullable). La cantidad del dominio se representa como `quantityMilli: bigint` (milésimas) y se convierte a/desde `numeric(12,3)` al persistir. El precio unitario es entero positivo en COP; la unidad del lote debe coincidir con la del producto. Coordenadas se restringen a los límites de Colombia; `quality_grade` admite texto opcional de hasta 100 caracteres sin vocabulario cerrado.
-- `lot_photos` (id uuid, lot_id uuid, media_ref text, created_at timestamptz NOT NULL, state text NOT NULL, content_type text nullable, size_bytes integer nullable, position integer NOT NULL, expires_at timestamptz NOT NULL, lease_token text nullable, lease_expires_at timestamptz nullable, deleted_at timestamptz nullable). `state` is `pending`, `processing` or `ready`; ready rows require `content_type = 'image/webp'` and non-null `size_bytes`. Indexes: `lot_id`, expiry for non-ready rows, and `(lot_id, position)` for non-deleted rows.
+- `lot_photos` (id uuid, lot_id uuid, media_ref text, created_at timestamptz NOT NULL, state text NOT NULL, content_type text nullable, size_bytes integer nullable, position integer NOT NULL, expires_at timestamptz NOT NULL, lease_token text nullable, lease_expires_at timestamptz nullable, deleted_at timestamptz nullable). `state` puede ser `pending`, `processing` o `ready`; las filas `ready` requieren `content_type = 'image/webp'` y `size_bytes` no nulo. Índices: `lot_id`, vencimiento para filas que no estén `ready` y `(lot_id, position)` para filas no eliminadas.
 
 Unidades actualmente aceptadas por el catálogo: `kg`, `g`, `lb`, `und`, `docena`, `arroba`, `quintal`, `caja`, `mano`, `bulto`. Esta lista es **provisional**; el vocabulario de unidades y el vocabulario para `quality_grade` siguen pendientes de decisión (§23).
 
@@ -411,8 +411,10 @@ Unidades actualmente aceptadas por el catálogo: `kg`, `g`, `lb`, `und`, `docena
 
 **sync**
 
-- `processed_operations` (op_id pk, device_id, entity, result, server_seq, processed_at)
-- `change_log` (server_seq bigserial, entity, entity_id, op, payload jsonb, occurred_at)
+- `processed_operations` (`op_id uuid` PK, `device_id uuid` NOT NULL, `user_id uuid` NOT NULL, `entity text` NOT NULL, `entity_id uuid` NOT NULL, `result jsonb` NOT NULL, `error_code text` nullable, `payload_hash text` NOT NULL, `server_seq bigint` nullable, `processed_at timestamptz` NOT NULL). Restricciones: longitud de `entity` entre 1 y 64; longitud del código de error nullable ≤100; `payload_hash` contiene 64 caracteres hexadecimales en minúscula; `result` es un objeto JSON cuyo `status` es `applied`, `rejected` o `conflict`.
+- `change_log` (`server_seq bigint` PK, default from `sync.change_log_server_seq_seq`; `entity text` NOT NULL; `entity_id uuid` NOT NULL; `op text` NOT NULL; `payload jsonb` NOT NULL; `owner_user_id uuid` nullable; `occurred_at timestamptz` NOT NULL). Índice: `(owner_user_id, server_seq)`. Restricciones: longitud de `entity` entre 1 y 64 y valor en `category`, `product`, `lot`; longitud de `op` entre 1 y 32 y valor en `upsert`, `delete`, `cancel`; tamaño serializado de `payload` ≤262,144 bytes.
+
+Actualmente no hay implementada retención ni compactación para `sync.change_log` ni `sync.processed_operations`; se deben definir e implementar más adelante, sin asumir un periodo de retención.
 
 **backoffice**
 
@@ -625,7 +627,7 @@ pnpm test:contract        # contratos de puertos
 pnpm db:generate          # drizzle-kit: generar migración
 pnpm db:migrate           # aplicar migraciones
 pnpm db:seed              # usuarios sintéticos; solo NODE_ENV=development
-pnpm identity:create-staff --phone +573001234567 --name "Nombre" --role admin # CLI protegido
+pnpm identity:create-staff --phone "+57 300 000 0000" --name "Nombre" --role admin # CLI protegido
 pnpm build                # build de todo
 ```
 
@@ -760,6 +762,7 @@ MAPS_API_KEY=
 9. **Texto del aviso de privacidad y su versión inicial.** El valor técnico inicial es `v0-draft`; el equipo debe redactar y aprobar el texto legal.
 10. Verify the adapter against a real S3 provider and confirm the minimum IAM permissions for `S3_API_*` and `S3_POLICY_*`.
 11. Define the bucket lifecycle policy for `incoming/`. The code only purges old orphan objects from `incoming/` and `photos/` when `catalog:purge-orphan-photos` is run; it does not automatically clean up the bucket.
+12. Definir e implementar la retención/compactación de `sync.change_log` y `sync.processed_operations`; actualmente ninguna de las dos tablas cuenta con un proceso automático de retención.
 
 ---
 

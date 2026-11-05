@@ -32,6 +32,7 @@ export type LotStatus = (typeof LOT_STATES)[number];
 export type LotEvent =
   | { readonly type: 'LotPublished'; readonly lotId: string; readonly occurredAt: string }
   | { readonly type: 'LotExpired'; readonly lotId: string; readonly occurredAt: string }
+  | { readonly type: 'LotDeleted'; readonly lotId: string; readonly occurredAt: string }
   | {
       readonly type: 'LotCancelled';
       readonly lotId: string;
@@ -121,6 +122,17 @@ export class Lot {
         previousStatus,
         occurredAt: occurredAt.toISOString(),
       });
+  }
+
+  deleteDraft(occurredAt: Date): void {
+    if (this.props.status !== 'draft')
+      throw new DomainError('Solo se puede eliminar un lote en borrador.', 'invalid_transition');
+    (this.props as { version: number }).version += 1;
+    this.pendingEvents.push({
+      type: 'LotDeleted',
+      lotId: this.props.id,
+      occurredAt: occurredAt.toISOString(),
+    });
   }
 
   drainEvents(): readonly LotEvent[] {

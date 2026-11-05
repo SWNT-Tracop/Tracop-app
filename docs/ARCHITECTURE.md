@@ -16,11 +16,23 @@ Las consultas de lotes incluyen filtros de categoría/producto, texto, precio, d
 
 La respuesta de lote elimina siempre `providerId`, latitud y longitud del objeto público; las coordenadas solo se añaden cuando el viewer es el proveedor propietario. El cálculo de distancia puede incluir `distanceKm`, sin revelar coordenadas del lote. La búsqueda aplica un límite por usuario con `InMemorySearchRateLimiter`, contadores en proceso y ventana fija; sus umbrales y radio máximo vienen de `CATALOG_SEARCH_RATE_LIMIT`, `CATALOG_SEARCH_RATE_WINDOW_SECONDS` y `CATALOG_SEARCH_RADIUS_MAX_KM`.
 
+`ChangeRecorderPort` hace parte de la superficie pública de catálogo (`catalog/index.ts`). El catálogo registra los cambios de categorías, productos y lotes después de mutaciones exitosas, dentro de la unidad de trabajo del catálogo. En la aplicación en ejecución, `CatalogChangeRecorderAdapter`, en `bootstrap/`, delega `record` y `recordBaselineIfAbsent` al `SyncRepositoryPort` público; el adaptador no accede directamente a las tablas de sync. El backfill del catálogo usa `recordBaselineIfAbsent` para insertar un cambio inicial solo cuando esa entidad no tiene historial registrado.
+
 ### `ProviderDirectoryPort`
 
 `LotsController` usa `ProviderDirectoryPort` para enriquecer respuestas con el resumen público del proveedor. El catálogo define el puerto en su superficie pública; `bootstrap/catalog-bridge.module.ts` implementa `IdentityProviderDirectoryAdapter`, que delega a `ProviderProfileService` expuesto por `identity/index.ts`. Así, el catálogo no importa internals ni consulta tablas de identidad.
 
 La decisión del núcleo de catálogo está en [ADR-010](adr/ADR-010.md).
+
+## Sync
+
+`sync` expone `POST /sync/push` y `GET /sync/pull`, ambos autenticados. Push valida hasta 50 operaciones, las procesa en el orden recibido y devuelve un resultado individual `applied`, `rejected` o `conflict`. Pull usa un cursor numérico `server_seq` opaco para el cliente y devuelve los cambios visibles para el usuario autenticado (cambios asociados a su propiedad y cambios sin propietario). La documentación vigente de los endpoints excluye explícitamente la retención/compactación, los datos públicos del catálogo para uso sin conexión, la sincronización de fotos y un worker periódico.
+
+`SyncService` usa `SyncOperationHandlerRegistry`, indexado por entidad, para despachar operaciones mediante `SyncOperationHandlerPort`. La interfaz del handler se exporta desde `sync/index.ts`; los módulos no importan internals de otros módulos. `CatalogLotSyncHandler` se registra en `CatalogSyncBridgeModule`, en `bootstrap/`, y delega las operaciones de creación, actualización, transición y eliminación de lotes al `CatalogService` público. Valida los payloads y las versiones de las operaciones, e informa las versiones del servidor; las transiciones de lote no admitidas se rechazan. Allí no se conecta ningún handler para otras entidades.
+
+Los cambios del catálogo y el registro de operaciones de sync comparten una transacción de PostgreSQL. `DrizzleUnitOfWork`, `SyncUnitOfWork` y la unidad de trabajo del catálogo delegan en `DatabaseService.transaction`. `DatabaseService` guarda la transacción activa de Drizzle en `AsyncLocalStorage`; las llamadas anidadas reutilizan esa transacción y, por tanto, las llamadas a repositorios mediante `DatabaseService.current()` participan en ella. Para cada operación de push, esto mantiene atómicos la mutación del catálogo, su fila registrada en el log de cambios y el resultado de la operación procesada. Si un error sale de la transacción de la operación, esta se revierte; los errores del handler se convierten en resultados `rejected`/`conflict` y se guardan como resultados procesados.
+
+`DrizzleSyncRepository` usa bloqueos advisory de PostgreSQL limitados a la transacción. En push, primero adquiere un bloqueo de operación por `opId` y luego consulta `processed_operations`, serializando los reintentos concurrentes del mismo ID; después verifica el usuario autenticado y un hash canónico del payload para devolver un resultado previo idéntico o rechazar la reutilización. Los cambios nuevos y las verificaciones de baseline adquieren un bloqueo de secuencia aparte justo antes de asignar e insertar la secuencia. Cuando se necesitan ambos bloqueos, el orden es siempre: operación y luego secuencia. El bloqueo de secuencia global se conserva hasta terminar la transacción y serializa la asignación de `server_seq`, lo que mantiene el orden usado por la paginación de pull; el costo es que la escritura del log de cambios puede competir por ese bloqueo. El repositorio persiste los resultados de idempotencia en `sync.processed_operations` y los cambios en `sync.change_log`.
 
 ### Lot photos
 
@@ -149,15 +161,16 @@ Cada módulo es dueño de sus datos. La migración inicial creó schemas para `i
 
 `apps/api/src/bootstrap/` es el único lugar donde se conectan puertos con adaptadores concretos. Ningún módulo conoce los adaptadores de otro; `bootstrap/` importa `index.ts` de cada módulo y wirea:
 
-| Archivo                          | Qué conecta                                                                                                                                           |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule` y el puente del catálogo.               |
-| `identity-bridge.module.ts`      | Expone `IdentityChannelApplication` (puerto de aplicación de `identity`) para que `bootstrap/` pueda adaptarlo.                                       |
-| `catalog-bridge.module.ts`       | Implementa `ProviderDirectoryPort` mediante `IdentityProviderDirectoryAdapter`, delegando a `ProviderProfileService` de `identity`.                   |
-| `otp-delivery.module.ts`         | Selecciona `OtpSenderPort` según `OTP_SENDER`: `InMemoryOtpSender` (test), `DevelopmentOtpSender` (consola, dev), `TelegramOtpSender` (producción).   |
-| `telegram-otp-sender.adapter.ts` | Implementa `OtpSenderPort` usando `IdentityChannelApplication.findActiveChannelLinkByPhone` + `MessagingPort.sendText`. Fire-and-forget, sin bloqueo. |
-| `identity-channel.adapter.ts`    | Implementa `ChannelIdentityPort` (de `messaging`) delegando a `IdentityChannelApplication`.                                                           |
-| `http.ts`                        | Configuración global de Nest (prefijo, validación, throttler, CORS, Swagger).                                                                         |
+| Archivo                          | Qué conecta                                                                                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule` y el puente del catálogo.                      |
+| `identity-bridge.module.ts`      | Expone `IdentityChannelApplication` (puerto de aplicación de `identity`) para que `bootstrap/` pueda adaptarlo.                                              |
+| `catalog-bridge.module.ts`       | Implementa `ProviderDirectoryPort` mediante `IdentityProviderDirectoryAdapter`, delegando a `ProviderProfileService` de `identity`.                          |
+| `catalog-sync-bridge.module.ts`  | Proporciona `CatalogChangeRecorderAdapter` para el puerto público `ChangeRecorderPort` y registra `CatalogLotSyncHandler` en `SyncOperationHandlerRegistry`. |
+| `otp-delivery.module.ts`         | Selecciona `OtpSenderPort` según `OTP_SENDER`: `InMemoryOtpSender` (test), `DevelopmentOtpSender` (consola, dev), `TelegramOtpSender` (producción).          |
+| `telegram-otp-sender.adapter.ts` | Implementa `OtpSenderPort` usando `IdentityChannelApplication.findActiveChannelLinkByPhone` + `MessagingPort.sendText`. Fire-and-forget, sin bloqueo.        |
+| `identity-channel.adapter.ts`    | Implementa `ChannelIdentityPort` (de `messaging`) delegando a `IdentityChannelApplication`.                                                                  |
+| `http.ts`                        | Configuración global de Nest (prefijo, validación, throttler, CORS, Swagger).                                                                                |
 
 **Regla**: los módulos **no** importan `bootstrap/`. `bootstrap/` importa solo `index.ts` públicos. Los adaptadores en `bootstrap/` son los únicos que cruzan límites de módulo.
 

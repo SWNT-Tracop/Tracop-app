@@ -28,6 +28,8 @@ export interface LotRepository {
   save(lot: LotProps): Promise<'created' | 'exists'>;
   update(lot: LotProps, expectedVersion: number): Promise<boolean>;
   findExpired(now: Date, limit: number): Promise<readonly LotProps[]>;
+  findAllForChangeBackfill(): Promise<readonly LotProps[]>;
+  softDelete(lot: LotProps, expectedVersion: number, deletedAt: Date): Promise<boolean>;
 }
 export interface CatalogUnitOfWork {
   run<T>(operation: () => Promise<T>): Promise<T>;
@@ -44,6 +46,24 @@ export interface ProviderDirectoryPort {
 }
 export interface CatalogClock {
   now(): Date;
+}
+export interface ChangeRecorderPort {
+  record(change: {
+    readonly entity: 'lot' | 'category' | 'product';
+    readonly entityId: string;
+    readonly op: string;
+    readonly payload: Record<string, unknown>;
+    readonly ownerUserId: string | null;
+    readonly occurredAt: Date;
+  }): Promise<string>;
+  recordBaselineIfAbsent(change: {
+    readonly entity: 'lot' | 'category' | 'product';
+    readonly entityId: string;
+    readonly op: string;
+    readonly payload: Record<string, unknown>;
+    readonly ownerUserId: string | null;
+    readonly occurredAt: Date;
+  }): Promise<string | null>;
 }
 export interface CatalogCursor {
   readonly version: 1;
@@ -82,3 +102,4 @@ export const CATALOG_UNIT_OF_WORK = Symbol('CATALOG_UNIT_OF_WORK');
 export const CATALOG_EVENT_WRITER = Symbol('CATALOG_EVENT_WRITER');
 export const PROVIDER_DIRECTORY = Symbol('PROVIDER_DIRECTORY');
 export const CATALOG_CLOCK = Symbol('CATALOG_CLOCK');
+export const CHANGE_RECORDER = Symbol('CHANGE_RECORDER');

@@ -59,6 +59,33 @@ export const createLotSchema = z
   })
   .strict();
 
+export const updateLotRequestSchema = z
+  .object({
+    version: z.number().int().positive(),
+    productId: z.string().uuid().optional(),
+    quantityMilli: z
+      .string()
+      .regex(/^[1-9]\d{0,11}$/)
+      .optional(),
+    unit: productUnitSchema.optional(),
+    unitPrice: z.number().int().positive().safe().optional(),
+    qualityGrade: z.string().max(100).nullable().optional(),
+    availableFrom: z.string().datetime({ offset: true }).optional(),
+    availableUntil: z.string().datetime({ offset: true }).optional(),
+    locationLat: z.number().finite().min(-90).max(90).optional(),
+    locationLng: z.number().finite().min(-180).max(180).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).some((key) => key !== 'version'));
+
+export const lotVersionSchema = z.object({ version: z.number().int().positive() }).strict();
+
+export const lotSyncTransitionSchema = z
+  .object({
+    status: z.enum(['published', 'cancelled', 'reserved', 'sold_out', 'expired']),
+  })
+  .strict();
+
 export const lotCursorPayloadSchema = z
   .object({
     version: z.literal(1),

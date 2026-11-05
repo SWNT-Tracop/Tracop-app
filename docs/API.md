@@ -26,6 +26,44 @@ The response body is a JSON object. Depending on the error, it contains:
 
 This cursor convention is implemented for catalog lot search; do not assume all list endpoints are paginated this way.
 
+## Sincronización sin conexión
+
+`POST /sync/push` y `GET /sync/pull` requieren `Authorization: Bearer <accessToken>`. El token autenticado aporta el ID de usuario, el rol y el ID de dispositivo (`did`); ninguno de los endpoints acepta `deviceId` en la solicitud. Las solicitudes tienen límite por usuario autenticado y endpoint: por defecto, 30 solicitudes push y 120 pull por ventana de 60 segundos en memoria (`SYNC_PUSH_RATE_LIMIT`, `SYNC_PULL_RATE_LIMIT` y `SYNC_RATE_WINDOW_SECONDS`). El exceso devuelve HTTP 429 y puede incluir `Retry-After`. Estos límites no se coordinan entre instancias de la API.
+
+### Operaciones push
+
+El límite del cuerpo JSON de `POST /sync/push` es 256 KiB. Las demás rutas JSON usan un límite de 64 KiB. El objeto de solicitud y cada operación son estrictos: los campos desconocidos se rechazan con HTTP 400. El cuerpo contiene `operations`, un arreglo de 1 a 50 operaciones:
+
+```json
+{
+  "operations": [
+    {
+      "opId": "0190f47a-8b45-7cc2-9a1e-123456789abc",
+      "entity": "lot",
+      "entityId": "0190f47a-8b45-7cc2-9a1e-123456789abd",
+      "type": "create",
+      "payload": {}
+    }
+  ]
+}
+```
+
+Cada operación tiene un `opId` UUID v7, una cadena `entity` recortada de 1 a 64 caracteres, un `entityId` UUID, un `type` con valor `create`, `update`, `transition` o `delete`, y un `payload` objeto. Si se incluye `baseVersion`, debe ser un entero positivo. El único manejador push registrado actualmente es para `lot`; otros nombres de entidad se rechazan en el nivel de la operación. `create` debe omitir `baseVersion`, y el `id` del payload del lote debe coincidir con `entityId`. `update`, `transition` y `delete` de lotes requieren `baseVersion`, que debe coincidir con la versión actual del servidor. Para operaciones consecutivas sobre un lote, usa el `serverVersion` del resultado exitoso anterior como `baseVersion` de la siguiente operación.
+
+`opId` es la clave de idempotencia. El servidor calcula SHA-256 sobre la representación JSON canónica de la operación completa. Repetir un `opId` para el mismo usuario y hash reproduce el resultado anterior; reutilizarlo con otro hash devuelve `rejected` con `op_id_reused`, y se rechaza si la operación ya fue registrada para otro usuario. Si una operación falla, las operaciones posteriores de la misma combinación `entity:entityId` en ese lote push se rechazan por dependencia; las entidades independientes no se bloquean.
+
+La respuesta es `{ "results": [...] }`. Cada resultado tiene `opId` y un `status` con valor `applied`, `rejected` o `conflict`; también puede incluir `code` y `serverVersion`. Los códigos de operación definidos por el contrato son `invalid_payload`, `unknown_entity`, `not_found`, `forbidden`, `version_conflict`, `invalid_transition`, `unsupported_transition`, `dependency_failed` y `op_id_reused`. Las discrepancias de versión devuelven `conflict` con `version_conflict` e incluyen `serverVersion` cuando está disponible. Otros fallos de operación gestionados devuelven `rejected`. La respuesta push no incluye `serverSeq`; el cliente obtiene la secuencia mediante pull. Para borrar un lote, este debe estar en borrador: el borrado exitoso es lógico y el cambio de pull es `delete` con `payload.tombstone: true`. Los lotes publicados se cancelan, no se borran.
+
+### Cambios pull
+
+`GET /sync/pull` acepta los parámetros de consulta opcionales `cursor` y `limit`. `cursor` es un `server_seq` decimal (no una marca de tiempo del cliente), su valor predeterminado es `0` y debe ser una cadena decimal no negativa de máximo 19 dígitos, sin ceros iniciales salvo el valor `0`. `limit` tiene valor predeterminado 200 y debe ser un entero entre 1 y 500. Los parámetros de consulta desconocidos se rechazan.
+
+La respuesta es `{ "changes": [...], "nextCursor": "...", "hasMore": false }`. Los cambios se devuelven en orden ascendente de `server_seq` e incluyen `serverSeq`, `entity`, `entityId`, `op`, `payload` y `occurredAt`. La taxonomía actual del registro de cambios admite las entidades `category`, `product` y `lot`, y las operaciones `upsert`, `delete` y `cancel`. Pull incluye los cambios globales (`owner_user_id IS NULL`) y los que pertenecen al usuario autenticado; también incluye los cambios originados por el dispositivo solicitante. Aplica un cambio solo si la versión de la entidad es más reciente que la versión local. Cuando `hasMore` es `true`, `nextCursor` es la secuencia del último cambio devuelto; de lo contrario, avanza hasta el horizonte global actual de secuencias, incluso sobre filas filtradas por propietario. Guarda y envía de vuelta el cursor recibido sin modificarlo.
+
+### Errores HTTP
+
+Ambas rutas devuelven HTTP 400 si falla la validación de la consulta o del cuerpo, HTTP 401 si falta la autenticación o es inválida, y HTTP 429 cuando se supera el límite de solicitudes sync por usuario. Push también puede devolver HTTP 413 si se excede el límite de cuerpo de 256 KiB. Los cuerpos de error siguen el formato compartido descrito arriba; los errores de validación y tamaño no garantizan un `code` específico de la ruta. Los fallos de negocio u operación de push se representan en el arreglo `results` de una respuesta HTTP 200, no como errores HTTP individuales por operación. El controller documenta HTTP 400, 401 y 429 para pull, y HTTP 400, 401, 413 y 429 para push.
+
 ## IDs and idempotency
 
 - Lot creation validates that its client-supplied ID is UUID v7. Category and product creation also accept a client-supplied ID, but their schemas validate UUID format without enforcing version 7. Do not infer uniform UUID v7 enforcement across create endpoints.

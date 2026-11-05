@@ -276,6 +276,28 @@ export class DrizzleLotRepository implements LotRepository {
         .limit(limit)
     ).map(toLot);
   }
+  async findAllForChangeBackfill(): Promise<readonly LotProps[]> {
+    return (await this.database.current().select().from(lots).where(isNull(lots.deletedAt))).map(
+      toLot,
+    );
+  }
+  async softDelete(lot: LotProps, expectedVersion: number, deletedAt: Date): Promise<boolean> {
+    const rows = await this.database
+      .current()
+      .update(lots)
+      .set({ deletedAt, updatedAt: deletedAt, version: expectedVersion + 1 })
+      .where(
+        and(
+          eq(lots.id, lot.id),
+          eq(lots.providerId, lot.providerId),
+          eq(lots.version, expectedVersion),
+          eq(lots.status, 'draft'),
+          isNull(lots.deletedAt),
+        ),
+      )
+      .returning({ id: lots.id });
+    return rows.length === 1;
+  }
 }
 
 @Injectable()

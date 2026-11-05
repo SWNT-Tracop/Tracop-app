@@ -66,6 +66,15 @@ const envSchema = z.object({
   CATALOG_PHOTO_PROCESSING_LEASE_SECONDS: z.coerce.number().int().positive().default(300),
   CATALOG_PHOTO_UPLOAD_RATE_LIMIT: z.coerce.number().int().positive().default(30),
   CATALOG_PHOTO_UPLOAD_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  SYNC_PUSH_MAX_BODY_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(256 * 1024)
+    .default(256 * 1024),
+  SYNC_PUSH_RATE_LIMIT: z.coerce.number().int().positive().default(30),
+  SYNC_PULL_RATE_LIMIT: z.coerce.number().int().positive().default(120),
+  SYNC_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   S3_ENDPOINT: optionalText(z.string().url()),
   S3_PUBLIC_ENDPOINT: optionalText(z.string().url()),
   S3_BUCKET: optionalText(z.string().min(3).max(63)),

@@ -65,6 +65,7 @@ module.exports = {
     'src/modules/catalog/domain/**/*.ts',
     'src/modules/catalog/application/**/*.ts',
     'src/modules/messaging/application/**/*.ts',
+    'src/modules/sync/application/**/*.ts',
     'src/shared/auth/**/*.ts',
     'src/shared/kernel/**/*.ts',
     '!**/index.ts',

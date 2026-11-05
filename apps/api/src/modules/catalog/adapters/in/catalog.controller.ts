@@ -18,7 +18,9 @@ import {
   createLotSchema,
   createProductSchema,
   lotCursorPayloadSchema,
+  lotVersionSchema,
   searchLotsQuerySchema,
+  updateLotRequestSchema,
 } from '@tracop/contracts';
 import { AuthGuard, type AuthenticatedRequest, Roles } from '../../../../shared/auth/index.js';
 import { DomainError } from '../../../../shared/kernel/domain-error.js';
@@ -27,6 +29,7 @@ import { InMemorySearchRateLimiter } from '../../../../shared/infra/search-rate-
 import { APP_ENVIRONMENT } from '../../../../shared/infra/tokens.js';
 import type { AppEnvironment } from '../../../../shared/infra/env.js';
 import { CatalogService } from '../../application/catalog-service.js';
+import { DeleteLot } from '../../application/delete-lot.js';
 import { PROVIDER_DIRECTORY, type ProviderDirectoryPort } from '../../ports/catalog-ports.js';
 import { serializeLotForViewer } from './lot-response.js';
 import { ApiErrorResponses, ApiZodBody, ApiZodResponse } from '../../../../shared/infra/openapi.js';
@@ -161,6 +164,7 @@ export class CatalogController {
 export class LotsController {
   constructor(
     @Inject(CatalogService) private readonly catalog: CatalogService,
+    @Inject(DeleteLot) private readonly deleteDraft: DeleteLot,
     @Inject(LotPhotoService) private readonly lotPhotos: LotPhotoService,
     @Inject(PROVIDER_DIRECTORY) private readonly providers: ProviderDirectoryPort,
     @Inject(InMemorySearchRateLimiter)
@@ -438,20 +442,52 @@ export class LotsController {
     schema: { type: 'string', format: 'uuid' },
     example: '018f47a2-8b45-7cc2-9a1e-123456789abe',
   })
+  @ApiZodBody(updateLotRequestSchema, {
+    version: 1,
+    unitPrice: 3200,
+  })
   @ApiErrorResponses(400, 401, 403, 404, 409)
   async update(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthenticatedRequest) {
-    if (
-      typeof body !== 'object' ||
-      body === null ||
-      !('version' in body) ||
-      typeof body.version !== 'number'
-    )
-      throw new DomainError('Incluye la versión conocida.', 'invalid_version');
-    const { version, ...input } = body as { version: number; [key: string]: unknown };
+    const { version, ...input } = updateLotRequestSchema.parse(body);
+    const patch = {
+      ...(input.productId !== undefined ? { productId: input.productId } : {}),
+      ...(input.quantityMilli !== undefined ? { quantityMilli: BigInt(input.quantityMilli) } : {}),
+      ...(input.unit !== undefined ? { unit: input.unit } : {}),
+      ...(input.unitPrice !== undefined ? { unitPrice: BigInt(input.unitPrice) } : {}),
+      ...(input.qualityGrade !== undefined ? { qualityGrade: input.qualityGrade } : {}),
+      ...(input.availableFrom !== undefined
+        ? { availableFrom: new Date(input.availableFrom) }
+        : {}),
+      ...(input.availableUntil !== undefined
+        ? { availableUntil: new Date(input.availableUntil) }
+        : {}),
+      ...(input.locationLat !== undefined ? { locationLat: input.locationLat } : {}),
+      ...(input.locationLng !== undefined ? { locationLng: input.locationLng } : {}),
+    };
     return this.toResponse(
-      await this.catalog.updateLot(req.identity!, id, version, input as never),
+      await this.catalog.updateLot(req.identity!, id, version, patch),
       req.identity!.sub,
     );
+  }
+
+  @Delete(':id')
+  @Roles('producer', 'supplier')
+  @ApiOperation({
+    summary: 'Eliminar borrador de lote',
+    description:
+      'Elimina lógicamente solo un lote en borrador, marca sus fotos como borradas y publica un tombstone para sync. Para lotes publicados usa cancelar.',
+  })
+  @ApiParam({ name: 'id', schema: { type: 'string', format: 'uuid' } })
+  @ApiZodBody(lotVersionSchema, { version: 1 })
+  @ApiErrorResponses(400, 401, 403, 404, 409)
+  async deleteLot(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const { version } = lotVersionSchema.parse(body);
+    const deleted = await this.deleteDraft.execute(request.identity!, id, version);
+    return { id: deleted.id, version: deleted.version, status: 'deleted' as const };
   }
   @Post(':id/publish')
   @Roles('producer', 'supplier')
@@ -493,14 +529,7 @@ export class LotsController {
   }
 
   private parseVersion(body: unknown): number {
-    if (
-      typeof body !== 'object' ||
-      body === null ||
-      !('version' in body) ||
-      !Number.isInteger(body.version)
-    )
-      throw new DomainError('Incluye la versión conocida.', 'invalid_version');
-    return body.version as number;
+    return lotVersionSchema.parse(body).version;
   }
   private async toResponse(
     lot:

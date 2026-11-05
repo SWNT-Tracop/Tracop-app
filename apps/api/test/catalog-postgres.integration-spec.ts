@@ -8,15 +8,20 @@ import {
   type ProviderProfileService,
 } from '../src/modules/identity/index.js';
 import { createId } from '../src/shared/kernel/ids.js';
-import { DATABASE_POOL } from '../src/shared/infra/tokens.js';
+import { APP_ENVIRONMENT, DATABASE_POOL } from '../src/shared/infra/tokens.js';
 import { APP_CLOCK } from '../src/shared/infra/tokens.js';
+import { loadAppEnvironment } from '../src/shared/infra/env.js';
+import { DatabaseService } from '../src/shared/infra/database.js';
 import { describePostgres } from './postgres-suite.js';
+import { SyncService } from '../src/modules/sync/index.js';
 
 describePostgres('catalog repositories and use cases (shared PostgreSQL Testcontainers)', () => {
   let app: INestApplicationContext;
   let pool: pg.Pool;
   let catalog: CatalogService;
   let profiles: ProviderProfileService;
+  let sync: SyncService;
+  let database: DatabaseService;
   const now = new Date('2026-10-30T12:00:00.000Z');
   const staff = { sub: '00000000-0000-7000-8000-000000000001', role: 'operator' };
   const producer = { sub: '00000000-0000-7000-8000-000000000002', role: 'producer' };
@@ -27,7 +32,8 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
   let otherProductId: string;
 
   const resetTables = async () => {
-    await pool.query(`TRUNCATE catalog.lot_photos, catalog.lots, catalog.products, catalog.categories,
+    await pool.query(`TRUNCATE sync.processed_operations, sync.change_log,
+      catalog.lot_photos, catalog.lots, catalog.products, catalog.categories,
       identity.provider_profiles, identity.consents, identity.otp_codes, identity.sessions,
       identity.devices, identity.channel_links, identity.users, shared.outbox_events CASCADE`);
   };
@@ -65,6 +71,12 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(APP_ENVIRONMENT)
+      .useValue({
+        ...loadAppEnvironment(),
+        SYNC_PULL_RATE_LIMIT: 10_000,
+        SYNC_PUSH_RATE_LIMIT: 10_000,
+      })
       .overrideProvider(APP_CLOCK)
       .useValue({ now: () => new Date(now) })
       .compile();
@@ -73,6 +85,8 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     pool = app.get(DATABASE_POOL) as pg.Pool;
     catalog = app.get(CatalogService);
     profiles = app.get(PROVIDER_PROFILE_SERVICE) as ProviderProfileService;
+    sync = app.get(SyncService);
+    database = app.get(DatabaseService);
   });
 
   beforeEach(async () => {
@@ -141,6 +155,48 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     await app.close();
   });
 
+  it('rolls back the catalog mutation and change_log row together and releases the sequence lock', async () => {
+    const id = createId();
+    await expect(
+      database.transaction(async () => {
+        await catalog.createLot(producer, {
+          id,
+          productId,
+          quantityMilli: 10_000n,
+          unit: 'kg',
+          unitPrice: 1_000n,
+          qualityGrade: null,
+          availableFrom: now,
+          availableUntil: new Date(now.getTime() + 86_400_000),
+          locationLat: 5.5,
+          locationLng: -73.4,
+        });
+        throw new Error('force rollback after change recorder insert');
+      }),
+    ).rejects.toThrow('force rollback after change recorder insert');
+
+    const [catalogRow, changeRow] = await Promise.all([
+      pool.query('SELECT 1 FROM catalog.lots WHERE id = $1', [id]),
+      pool.query("SELECT 1 FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1", [id]),
+    ]);
+    expect(catalogRow.rowCount).toBe(0);
+    expect(changeRow.rowCount).toBe(0);
+
+    const committed = await catalog.createLot(producer, {
+      id: createId(),
+      productId,
+      quantityMilli: 10_000n,
+      unit: 'kg',
+      unitPrice: 1_000n,
+      qualityGrade: null,
+      availableFrom: now,
+      availableUntil: new Date(now.getTime() + 86_400_000),
+      locationLat: 5.5,
+      locationLng: -73.4,
+    });
+    expect(committed.status).toBe('draft');
+  });
+
   it('applies category descendants, product, accent-insensitive token text, COP price, date and distance filters', async () => {
     const matching = await createLot({ price: 2500n, lat: 5.51, lng: -73.4 });
     await createLot({ productId: otherProductId, price: 2500n, lat: 5.51, lng: -73.4 });
@@ -162,6 +218,406 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     });
     expect(result.items.map(({ lot }) => lot.id)).toEqual([matching.id]);
   });
+
+  it('backfills pre-existing catalog rows with reusable payload builders and skips them on rerun', async () => {
+    const existingDraft = await createLot({ publish: false });
+    const existingPublished = await createLot();
+    await pool.query('TRUNCATE sync.change_log');
+
+    const first = await catalog.backfillChanges();
+    const lotRows = await pool.query(
+      `SELECT op, owner_user_id, payload FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1`,
+      [existingDraft.id],
+    );
+    const publishedRow = await pool.query(
+      `SELECT op, owner_user_id, payload FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1`,
+      [existingPublished.id],
+    );
+    const second = await catalog.backfillChanges();
+
+    expect(lotRows.rows).toHaveLength(1);
+    expect(lotRows.rows[0]).toMatchObject({
+      op: 'upsert',
+      owner_user_id: producer.sub,
+      payload: { id: existingDraft.id, version: 1, status: 'draft' },
+    });
+    expect(publishedRow.rows).toHaveLength(1);
+    expect(publishedRow.rows[0]).toMatchObject({
+      op: 'upsert',
+      owner_user_id: producer.sub,
+      payload: { id: existingPublished.id, version: 2, status: 'published' },
+    });
+    expect(first.recorded).toBeGreaterThan(0);
+    expect(second).toEqual({ recorded: 0, skipped: first.recorded });
+  });
+
+  it('soft-deletes a draft and its photos atomically while publishing a tombstone', async () => {
+    const draft = await createLot({ publish: false });
+    const photoId = createId();
+    await pool.query(
+      `INSERT INTO catalog.lot_photos (id, lot_id, media_ref, created_at, state, position, expires_at)
+       VALUES ($1, $2, 'photos/synthetic-delete.webp', $3, 'pending', 1, $4)`,
+      [photoId, draft.id, now, new Date(now.getTime() + 86_400_000)],
+    );
+
+    const deleted = await catalog.deleteLot(producer, draft.id, draft.version);
+    const rows = await pool.query(
+      `SELECT p.deleted_at AS photo_deleted_at, l.deleted_at AS lot_deleted_at
+       FROM catalog.lot_photos p JOIN catalog.lots l ON l.id = p.lot_id WHERE p.id = $1`,
+      [photoId],
+    );
+    const tombstone = await pool.query(
+      `SELECT payload FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1 AND op = 'delete'`,
+      [draft.id],
+    );
+    expect(deleted.version).toBe(draft.version + 1);
+    expect(rows.rows[0].photo_deleted_at).toBeInstanceOf(Date);
+    expect(rows.rows[0].lot_deleted_at).toBeInstanceOf(Date);
+    expect(tombstone.rows[0].payload).toEqual({
+      id: draft.id,
+      version: deleted.version,
+      tombstone: true,
+    });
+  });
+
+  it('applies create, edit, edit, publish versions in one ordered push and shares changes across two devices', async () => {
+    const lotId = createId();
+    const create = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'create' as const,
+      payload: {
+        id: lotId,
+        productId,
+        quantityMilli: '10000',
+        unit: 'kg',
+        unitPrice: 1000,
+        qualityGrade: null,
+        availableFrom: now.toISOString(),
+        availableUntil: new Date(now.getTime() + 86_400_000).toISOString(),
+        locationLat: 5.5,
+        locationLng: -73.4,
+      },
+    };
+    const updateOne = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'update' as const,
+      baseVersion: 1,
+      payload: { unitPrice: 1200 },
+    };
+    const updateTwo = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'update' as const,
+      baseVersion: 2,
+      payload: { quantityMilli: '12000' },
+    };
+    const publish = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'transition' as const,
+      baseVersion: 3,
+      payload: { status: 'published' },
+    };
+
+    const applied = await sync.push({ ...producer, did: createId() }, [
+      create,
+      updateOne,
+      updateTwo,
+      publish,
+    ]);
+    expect(applied.results.map((result) => [result.status, result.serverVersion])).toEqual([
+      ['applied', 1],
+      ['applied', 2],
+      ['applied', 3],
+      ['applied', 4],
+    ]);
+    const deviceA = await sync.pull({ ...producer, did: createId() }, '0', 20);
+    const deviceB = await sync.pull({ ...producer, did: createId() }, '0', 20);
+    const anotherProvider = await sync.pull(
+      { sub: '00000000-0000-7000-8000-000000000004', role: 'producer', did: createId() },
+      '0',
+      20,
+    );
+    expect(
+      deviceA.changes
+        .filter((change) => change.entityId === lotId)
+        .map((change) => change.payload.version),
+    ).toEqual([1, 2, 3, 4]);
+    expect(deviceB.changes).toEqual(deviceA.changes);
+    expect(anotherProvider.changes.filter((change) => change.entityId === lotId)).toEqual([]);
+  });
+
+  it('rejects dependent operations deterministically after an intermediate version conflict', async () => {
+    const lot = await createLot({ publish: false });
+    const failedEdit = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lot.id,
+      type: 'update' as const,
+      baseVersion: 9,
+      payload: { unitPrice: 2000 },
+    };
+    const dependentEdit = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lot.id,
+      type: 'update' as const,
+      baseVersion: 1,
+      payload: { unitPrice: 2200 },
+    };
+    const result = await sync.push({ ...producer, did: createId() }, [failedEdit, dependentEdit]);
+    expect(result.results.map(({ status, code }) => [status, code])).toEqual([
+      ['conflict', 'version_conflict'],
+      ['rejected', 'dependency_failed'],
+    ]);
+  });
+
+  it.each(['reserved', 'sold_out', 'expired'] as const)(
+    'rejects client-requested %s transitions with a typed code',
+    async (status) => {
+      const lot = await createLot({ publish: false });
+      const response = await sync.push({ ...producer, did: createId() }, [
+        {
+          opId: createId(),
+          entity: 'lot',
+          entityId: lot.id,
+          type: 'transition',
+          baseVersion: 1,
+          payload: { status },
+        },
+      ]);
+      expect(response.results[0]).toMatchObject({
+        status: 'rejected',
+        code: 'unsupported_transition',
+      });
+    },
+  );
+
+  it('serializes concurrent duplicate opIds and hides stored results from a different user', async () => {
+    const lotId = createId();
+    const operation = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'create' as const,
+      payload: {
+        id: lotId,
+        productId,
+        quantityMilli: '10000',
+        unit: 'kg',
+        unitPrice: 1000,
+        qualityGrade: null,
+        availableFrom: now.toISOString(),
+        availableUntil: new Date(now.getTime() + 86_400_000).toISOString(),
+        locationLat: 5.5,
+        locationLng: -73.4,
+      },
+    };
+    const duplicateResults = await Promise.all([
+      sync.push({ ...producer, did: createId() }, [operation]),
+      sync.push({ ...producer, did: createId() }, [operation]),
+    ]);
+    expect(duplicateResults[0]).toEqual(duplicateResults[1]);
+
+    const otherUserResult = await sync.push(
+      { sub: '00000000-0000-7000-8000-000000000004', role: 'producer', did: createId() },
+      [operation],
+    );
+    expect(otherUserResult.results[0]).toEqual({ opId: operation.opId, status: 'rejected' });
+  });
+
+  it('does not deadlock concurrent REST and sync writes to the same lot', async () => {
+    const lotId = createId();
+    const input = {
+      id: lotId,
+      productId,
+      quantityMilli: 10_000n,
+      unit: 'kg' as const,
+      unitPrice: 1000n,
+      qualityGrade: null,
+      availableFrom: now,
+      availableUntil: new Date(now.getTime() + 86_400_000),
+      locationLat: 5.5,
+      locationLng: -73.4,
+    };
+    const operation = {
+      opId: createId(),
+      entity: 'lot',
+      entityId: lotId,
+      type: 'create' as const,
+      payload: {
+        ...input,
+        quantityMilli: input.quantityMilli.toString(),
+        unitPrice: Number(input.unitPrice),
+        availableFrom: input.availableFrom.toISOString(),
+        availableUntil: input.availableUntil.toISOString(),
+      },
+    };
+    const mixed = await Promise.allSettled([
+      catalog.createLot(producer, input),
+      sync.push({ ...producer, did: createId() }, [operation]),
+    ]);
+    expect(mixed.every((result) => result.status === 'fulfilled')).toBe(true);
+    const stored = await pool.query(
+      'SELECT count(*)::int AS count FROM catalog.lots WHERE id = $1',
+      [lotId],
+    );
+    expect(stored.rows[0].count).toBe(1);
+  });
+
+  it('does not stop draining when writers finish during an in-flight empty pull', async () => {
+    let writersFinished = false;
+    let releaseFirstPull!: (page: { changes: readonly unknown[]; hasMore: boolean }) => void;
+    let pullCount = 0;
+    const firstPull = new Promise<{ changes: readonly unknown[]; hasMore: boolean }>((resolve) => {
+      releaseFirstPull = resolve;
+    });
+    const readUntilFinished = async (): Promise<void> => {
+      for (;;) {
+        const writersWereFinishedBeforePull = writersFinished;
+        const page = pullCount++ === 0 ? await firstPull : { changes: [], hasMore: false };
+        if (writersWereFinishedBeforePull && !page.hasMore && page.changes.length === 0) return;
+      }
+    };
+
+    const reader = readUntilFinished();
+    writersFinished = true;
+    releaseFirstPull({ changes: [], hasMore: false });
+    await reader;
+    expect(pullCount).toBe(2);
+  });
+
+  it.each(Array.from({ length: 20 }, (_, index) => index + 1))(
+    'stress run %i: 8 concurrent REST/sync writers and a paginating pull reader have no gaps or duplicates',
+    async () => {
+      await pool.query('TRUNCATE sync.change_log');
+      const stressActor = { sub: createId(), role: 'producer' };
+      const deviceIds = Array.from({ length: 4 }, () => createId());
+      const operationId = () => createId();
+      const makeInput = (id: string) => ({
+        id,
+        productId,
+        quantityMilli: 10_000n,
+        unit: 'kg' as const,
+        unitPrice: 1_000n,
+        qualityGrade: null,
+        availableFrom: now,
+        availableUntil: new Date(now.getTime() + 86_400_000),
+        locationLat: 5.5,
+        locationLng: -73.4,
+      });
+      const makeSyncOperation = (id: string) => {
+        const input = makeInput(id);
+        return {
+          opId: operationId(),
+          entity: 'lot',
+          entityId: id,
+          type: 'create' as const,
+          payload: {
+            ...input,
+            quantityMilli: input.quantityMilli.toString(),
+            unitPrice: Number(input.unitPrice),
+            availableFrom: input.availableFrom.toISOString(),
+            availableUntil: input.availableUntil.toISOString(),
+          },
+        };
+      };
+
+      const committedEntityIds: string[] = [];
+      const restWriters = Array.from({ length: 4 }, async () => {
+        const inputs = Array.from({ length: 25 }, () => makeInput(createId()));
+        committedEntityIds.push(...inputs.map(({ id }) => id));
+        const results = await Promise.all(
+          inputs.map((input) => catalog.createLot(stressActor, input)),
+        );
+        expect(results.every((lot) => lot.status === 'draft')).toBe(true);
+      });
+      const syncWriters = Array.from({ length: 4 }, async (_, index) => {
+        const operations = Array.from({ length: 25 }, () => makeSyncOperation(createId()));
+        committedEntityIds.push(...operations.map(({ entityId }) => entityId));
+        const result = await sync.push({ ...stressActor, did: deviceIds[index]! }, operations);
+        expect(result.results.every(({ status }) => status === 'applied')).toBe(true);
+      });
+      const writers = [...restWriters, ...syncWriters];
+      let writersFinished = false;
+      const writerCompletion = Promise.all(writers).finally(() => {
+        writersFinished = true;
+      });
+
+      const received: Array<{ serverSeq: string; entityId: string }> = [];
+      let cursor = '0';
+      const readUntilWritersFinish = async (): Promise<void> => {
+        for (;;) {
+          const writersWereFinishedBeforePull = writersFinished;
+          const page = await sync.pull({ ...stressActor, did: createId() }, cursor, 17);
+          received.push(
+            ...page.changes.map(({ serverSeq, entityId }) => ({ serverSeq, entityId })),
+          );
+          cursor = page.nextCursor;
+          if (writersWereFinishedBeforePull && !page.hasMore && page.changes.length === 0) return;
+          if (!writersFinished && !page.hasMore && page.changes.length === 0) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          }
+        }
+      };
+      await Promise.all([writerCompletion, readUntilWritersFinish()]);
+
+      const committedRows = await pool.query<{ server_seq: string; entity_id: string }>(
+        `SELECT server_seq::text, entity_id::text FROM sync.change_log
+         WHERE entity = 'lot' AND owner_user_id = $1 ORDER BY server_seq`,
+        [stressActor.sub],
+      );
+      const expectedIds = committedRows.rows.map(({ entity_id }) => entity_id);
+      const receivedIds = received.map(({ entityId }) => entityId);
+      const receivedSeqs = received.map(({ serverSeq }) => BigInt(serverSeq));
+      const finalDrain: Array<{ serverSeq: string; entityId: string }> = [];
+      let drainCursor = '0';
+      for (;;) {
+        const page = await sync.pull({ ...stressActor, did: createId() }, drainCursor, 37);
+        finalDrain.push(
+          ...page.changes.map(({ serverSeq, entityId }) => ({ serverSeq, entityId })),
+        );
+        drainCursor = page.nextCursor;
+        if (!page.hasMore) break;
+      }
+      const finalDrainIds = new Set(finalDrain.map(({ entityId }) => entityId));
+      const missingIds = expectedIds.filter((id) => !receivedIds.includes(id));
+      const missingRows = committedRows.rows
+        .filter(({ entity_id }) => missingIds.includes(entity_id))
+        .map(({ server_seq, entity_id }) => ({
+          entityId: entity_id,
+          serverSeq: server_seq,
+          inChangeLog: true,
+          inCompletePull: finalDrainIds.has(entity_id),
+          paginatedCursorPassedSeq: BigInt(cursor) >= BigInt(server_seq),
+        }));
+      expect(committedRows.rows).toHaveLength(200);
+      expect([...committedEntityIds].sort()).toEqual([...expectedIds].sort());
+      if ([...receivedIds].sort().join(',') !== [...expectedIds].sort().join(',')) {
+        throw new Error(
+          JSON.stringify({
+            paginatedCursor: cursor,
+            missingRows,
+            completePullCount: finalDrain.length,
+            completePullCursor: drainCursor,
+            taxonomyRows: finalDrain.filter(({ entityId }) => !expectedIds.includes(entityId)),
+          }),
+        );
+      }
+      expect(finalDrainIds.size).toBe(200);
+      expect(new Set(receivedIds).size).toBe(receivedIds.length);
+      expect(new Set(receivedSeqs.map(String)).size).toBe(receivedSeqs.length);
+      expect(receivedSeqs).toEqual(
+        [...receivedSeqs].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)),
+      );
+    },
+  );
 
   it.each(['price', 'distance', 'availability', 'recent'] as const)(
     'does stable keyset pagination with tie-break ids for %s order',

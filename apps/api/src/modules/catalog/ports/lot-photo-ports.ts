@@ -51,6 +51,7 @@ export interface LotPhotoRepository {
   listKnownObjectKeys(): Promise<ReadonlySet<string>>;
   expirePending(now: Date): Promise<readonly LotPhotoProps[]>;
   softDelete(photoId: string, now: Date): Promise<void>;
+  softDeleteForLot(lotId: string, now: Date): Promise<void>;
 }
 
 export interface PhotoProcessorPort {

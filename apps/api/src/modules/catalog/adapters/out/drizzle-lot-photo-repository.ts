@@ -3,6 +3,8 @@ import type { Pool, PoolClient } from 'pg';
 import type { LotPhotoProps, LotPhotoState } from '../../domain/lot-photo.js';
 import type { LotPhotoRepository, LotPhotoReservation } from '../../ports/lot-photo-ports.js';
 import { DATABASE_POOL } from '../../../../shared/infra/tokens.js';
+import { DatabaseService } from '../../../../shared/infra/database.js';
+import { sql } from 'drizzle-orm';
 
 type PhotoRow = {
   id: string;
@@ -36,7 +38,10 @@ const toPhoto = (row: PhotoRow): LotPhotoProps => ({
 
 @Injectable()
 export class DrizzleLotPhotoRepository implements LotPhotoRepository {
-  constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+  ) {}
 
   async reserveUpload(input: {
     readonly lotId: string;
@@ -342,6 +347,14 @@ export class DrizzleLotPhotoRepository implements LotPhotoRepository {
        WHERE id = $1 AND deleted_at IS NULL`,
       [photoId, now],
     );
+  }
+
+  async softDeleteForLot(lotId: string, now: Date): Promise<void> {
+    await this.database.current().execute(sql`
+      UPDATE catalog.lot_photos
+      SET deleted_at = ${now}, lease_token = NULL, lease_expires_at = NULL
+      WHERE lot_id = ${lotId}::uuid AND deleted_at IS NULL
+    `);
   }
 }
 
