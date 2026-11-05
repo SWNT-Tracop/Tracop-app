@@ -22,6 +22,17 @@ La respuesta de lote elimina siempre `providerId`, latitud y longitud del objeto
 
 La decisión del núcleo de catálogo está en [ADR-010](adr/ADR-010.md).
 
+### Lot photos
+
+`LotPhotoService` reserves and processes photos through `StoragePort` and `PhotoProcessorPort`; `S3StorageAdapter` implements S3-compatible storage and `SharpPhotoProcessorAdapter` validates/normalizes images. Keys are random: uploads use `incoming/` and outputs use `photos/`.
+
+1. An authorized provider calls `POST /lots/:id/photos` with a UUID v7 `photoId`. The API checks limits, lot state, and ownership; persists a `pending` reservation; and returns a presigned POST policy (URL, fields, expiry). The client uploads the file directly to the bucket, not through the API.
+2. `POST /lots/:id/photos/:photoId/confirm` claims the reservation by transitioning to `processing` with a lease token and expiry. The API checks size/format, processes JPEG/PNG/WebP, and writes a WebP output under `photos/`. Completion requires the lease token; an expired lease can be claimed again. The original and temporary objects are deleted on a best-effort basis; failures are left for orphan purging.
+3. Only `ready` photos appear in reads. The API creates presigned download URLs; lot lists include at most one photo and lot details include all photos. Responses contain `id`, `position`, and `url`, not independent `mediaRef`/`objectKey` fields.
+4. `catalog:purge-orphan-photos` expires pending reservations and deletes unreferenced objects in `incoming/` and `photos/` that exceed the configured grace period. It is a manual/externally scheduled command; the bucket is not automatically cleaned.
+
+Limits, expiries, quality, concurrency, lease, and rate limits use `CATALOG_PHOTO_*`; defaults are documented in the [README](../README.md#lot-photos). See [ADR-011](adr/ADR-011.md) for consequences and dependencies.
+
 ## Messaging (Telegram / WhatsApp)
 
 `messaging` implementa la recepción y envío de mensajes por canal de mensajería. El dominio y la aplicación no conocen Telegram ni WhatsApp; operan sobre `InboundMessage` / `OutboundMessage` definidos en `domain/messaging.ts`.
