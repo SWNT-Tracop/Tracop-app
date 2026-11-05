@@ -8,8 +8,10 @@ import {
   type ProviderProfileService,
 } from '../src/modules/identity/index.js';
 import { createId } from '../src/shared/kernel/ids.js';
-import { DATABASE_POOL } from '../src/shared/infra/tokens.js';
+import { APP_ENVIRONMENT, DATABASE_POOL } from '../src/shared/infra/tokens.js';
 import { APP_CLOCK } from '../src/shared/infra/tokens.js';
+import { loadAppEnvironment } from '../src/shared/infra/env.js';
+import { DatabaseService } from '../src/shared/infra/database.js';
 import { describePostgres } from './postgres-suite.js';
 import { SyncService } from '../src/modules/sync/index.js';
 
@@ -19,6 +21,7 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
   let catalog: CatalogService;
   let profiles: ProviderProfileService;
   let sync: SyncService;
+  let database: DatabaseService;
   const now = new Date('2026-10-30T12:00:00.000Z');
   const staff = { sub: '00000000-0000-7000-8000-000000000001', role: 'operator' };
   const producer = { sub: '00000000-0000-7000-8000-000000000002', role: 'producer' };
@@ -68,6 +71,12 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(APP_ENVIRONMENT)
+      .useValue({
+        ...loadAppEnvironment(),
+        SYNC_PULL_RATE_LIMIT: 10_000,
+        SYNC_PUSH_RATE_LIMIT: 10_000,
+      })
       .overrideProvider(APP_CLOCK)
       .useValue({ now: () => new Date(now) })
       .compile();
@@ -77,6 +86,7 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     catalog = app.get(CatalogService);
     profiles = app.get(PROVIDER_PROFILE_SERVICE) as ProviderProfileService;
     sync = app.get(SyncService);
+    database = app.get(DatabaseService);
   });
 
   beforeEach(async () => {
@@ -143,6 +153,48 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
 
   afterAll(async () => {
     await app.close();
+  });
+
+  it('rolls back the catalog mutation and change_log row together and releases the sequence lock', async () => {
+    const id = createId();
+    await expect(
+      database.transaction(async () => {
+        await catalog.createLot(producer, {
+          id,
+          productId,
+          quantityMilli: 10_000n,
+          unit: 'kg',
+          unitPrice: 1_000n,
+          qualityGrade: null,
+          availableFrom: now,
+          availableUntil: new Date(now.getTime() + 86_400_000),
+          locationLat: 5.5,
+          locationLng: -73.4,
+        });
+        throw new Error('force rollback after change recorder insert');
+      }),
+    ).rejects.toThrow('force rollback after change recorder insert');
+
+    const [catalogRow, changeRow] = await Promise.all([
+      pool.query('SELECT 1 FROM catalog.lots WHERE id = $1', [id]),
+      pool.query("SELECT 1 FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1", [id]),
+    ]);
+    expect(catalogRow.rowCount).toBe(0);
+    expect(changeRow.rowCount).toBe(0);
+
+    const committed = await catalog.createLot(producer, {
+      id: createId(),
+      productId,
+      quantityMilli: 10_000n,
+      unit: 'kg',
+      unitPrice: 1_000n,
+      qualityGrade: null,
+      availableFrom: now,
+      availableUntil: new Date(now.getTime() + 86_400_000),
+      locationLat: 5.5,
+      locationLng: -73.4,
+    });
+    expect(committed.status).toBe('draft');
   });
 
   it('applies category descendants, product, accent-insensitive token text, COP price, date and distance filters', async () => {
@@ -287,11 +339,7 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
         .map((change) => change.payload.version),
     ).toEqual([1, 2, 3, 4]);
     expect(deviceB.changes).toEqual(deviceA.changes);
-    expect(
-      anotherProvider.changes
-        .filter((change) => change.entityId === lotId)
-        .map((change) => change.payload.version),
-    ).toEqual([4]);
+    expect(anotherProvider.changes.filter((change) => change.entityId === lotId)).toEqual([]);
   });
 
   it('rejects dependent operations deterministically after an intermediate version conflict', async () => {
@@ -411,6 +459,154 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
     );
     expect(stored.rows[0].count).toBe(1);
   });
+
+  it('does not stop draining when writers finish during an in-flight empty pull', async () => {
+    let writersFinished = false;
+    let releaseFirstPull!: (page: { changes: readonly unknown[]; hasMore: boolean }) => void;
+    let pullCount = 0;
+    const firstPull = new Promise<{ changes: readonly unknown[]; hasMore: boolean }>((resolve) => {
+      releaseFirstPull = resolve;
+    });
+    const readUntilFinished = async (): Promise<void> => {
+      for (;;) {
+        const writersWereFinishedBeforePull = writersFinished;
+        const page = pullCount++ === 0 ? await firstPull : { changes: [], hasMore: false };
+        if (writersWereFinishedBeforePull && !page.hasMore && page.changes.length === 0) return;
+      }
+    };
+
+    const reader = readUntilFinished();
+    writersFinished = true;
+    releaseFirstPull({ changes: [], hasMore: false });
+    await reader;
+    expect(pullCount).toBe(2);
+  });
+
+  it.each(Array.from({ length: 20 }, (_, index) => index + 1))(
+    'stress run %i: 8 concurrent REST/sync writers and a paginating pull reader have no gaps or duplicates',
+    async () => {
+      await pool.query('TRUNCATE sync.change_log');
+      const stressActor = { sub: createId(), role: 'producer' };
+      const deviceIds = Array.from({ length: 4 }, () => createId());
+      const operationId = () => createId();
+      const makeInput = (id: string) => ({
+        id,
+        productId,
+        quantityMilli: 10_000n,
+        unit: 'kg' as const,
+        unitPrice: 1_000n,
+        qualityGrade: null,
+        availableFrom: now,
+        availableUntil: new Date(now.getTime() + 86_400_000),
+        locationLat: 5.5,
+        locationLng: -73.4,
+      });
+      const makeSyncOperation = (id: string) => {
+        const input = makeInput(id);
+        return {
+          opId: operationId(),
+          entity: 'lot',
+          entityId: id,
+          type: 'create' as const,
+          payload: {
+            ...input,
+            quantityMilli: input.quantityMilli.toString(),
+            unitPrice: Number(input.unitPrice),
+            availableFrom: input.availableFrom.toISOString(),
+            availableUntil: input.availableUntil.toISOString(),
+          },
+        };
+      };
+
+      const committedEntityIds: string[] = [];
+      const restWriters = Array.from({ length: 4 }, async () => {
+        const inputs = Array.from({ length: 25 }, () => makeInput(createId()));
+        committedEntityIds.push(...inputs.map(({ id }) => id));
+        const results = await Promise.all(
+          inputs.map((input) => catalog.createLot(stressActor, input)),
+        );
+        expect(results.every((lot) => lot.status === 'draft')).toBe(true);
+      });
+      const syncWriters = Array.from({ length: 4 }, async (_, index) => {
+        const operations = Array.from({ length: 25 }, () => makeSyncOperation(createId()));
+        committedEntityIds.push(...operations.map(({ entityId }) => entityId));
+        const result = await sync.push({ ...stressActor, did: deviceIds[index]! }, operations);
+        expect(result.results.every(({ status }) => status === 'applied')).toBe(true);
+      });
+      const writers = [...restWriters, ...syncWriters];
+      let writersFinished = false;
+      const writerCompletion = Promise.all(writers).finally(() => {
+        writersFinished = true;
+      });
+
+      const received: Array<{ serverSeq: string; entityId: string }> = [];
+      let cursor = '0';
+      const readUntilWritersFinish = async (): Promise<void> => {
+        for (;;) {
+          const writersWereFinishedBeforePull = writersFinished;
+          const page = await sync.pull({ ...stressActor, did: createId() }, cursor, 17);
+          received.push(
+            ...page.changes.map(({ serverSeq, entityId }) => ({ serverSeq, entityId })),
+          );
+          cursor = page.nextCursor;
+          if (writersWereFinishedBeforePull && !page.hasMore && page.changes.length === 0) return;
+          if (!writersFinished && !page.hasMore && page.changes.length === 0) {
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          }
+        }
+      };
+      await Promise.all([writerCompletion, readUntilWritersFinish()]);
+
+      const committedRows = await pool.query<{ server_seq: string; entity_id: string }>(
+        `SELECT server_seq::text, entity_id::text FROM sync.change_log
+         WHERE entity = 'lot' AND owner_user_id = $1 ORDER BY server_seq`,
+        [stressActor.sub],
+      );
+      const expectedIds = committedRows.rows.map(({ entity_id }) => entity_id);
+      const receivedIds = received.map(({ entityId }) => entityId);
+      const receivedSeqs = received.map(({ serverSeq }) => BigInt(serverSeq));
+      const finalDrain: Array<{ serverSeq: string; entityId: string }> = [];
+      let drainCursor = '0';
+      for (;;) {
+        const page = await sync.pull({ ...stressActor, did: createId() }, drainCursor, 37);
+        finalDrain.push(
+          ...page.changes.map(({ serverSeq, entityId }) => ({ serverSeq, entityId })),
+        );
+        drainCursor = page.nextCursor;
+        if (!page.hasMore) break;
+      }
+      const finalDrainIds = new Set(finalDrain.map(({ entityId }) => entityId));
+      const missingIds = expectedIds.filter((id) => !receivedIds.includes(id));
+      const missingRows = committedRows.rows
+        .filter(({ entity_id }) => missingIds.includes(entity_id))
+        .map(({ server_seq, entity_id }) => ({
+          entityId: entity_id,
+          serverSeq: server_seq,
+          inChangeLog: true,
+          inCompletePull: finalDrainIds.has(entity_id),
+          paginatedCursorPassedSeq: BigInt(cursor) >= BigInt(server_seq),
+        }));
+      expect(committedRows.rows).toHaveLength(200);
+      expect([...committedEntityIds].sort()).toEqual([...expectedIds].sort());
+      if ([...receivedIds].sort().join(',') !== [...expectedIds].sort().join(',')) {
+        throw new Error(
+          JSON.stringify({
+            paginatedCursor: cursor,
+            missingRows,
+            completePullCount: finalDrain.length,
+            completePullCursor: drainCursor,
+            taxonomyRows: finalDrain.filter(({ entityId }) => !expectedIds.includes(entityId)),
+          }),
+        );
+      }
+      expect(finalDrainIds.size).toBe(200);
+      expect(new Set(receivedIds).size).toBe(receivedIds.length);
+      expect(new Set(receivedSeqs.map(String)).size).toBe(receivedSeqs.length);
+      expect(receivedSeqs).toEqual(
+        [...receivedSeqs].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)),
+      );
+    },
+  );
 
   it.each(['price', 'distance', 'availability', 'recent'] as const)(
     'does stable keyset pagination with tie-break ids for %s order',
