@@ -125,12 +125,12 @@ El mismo seed crea además categorías y productos sintéticos `[DEMO]` del cat�
 
 Configuración del catálogo en `.env` (todos los valores tienen defaults):
 
-| Variable | Default | Uso |
-| --- | ---: | --- |
-| `CATALOG_LOT_MAX_HORIZON_DAYS` | `90` | Horizonte máximo de disponibilidad de un lote (límite de configuración: 365 días). |
-| `CATALOG_SEARCH_RADIUS_MAX_KM` | `500` | Radio máximo permitido para búsqueda por ubicación (límite de configuración: 1000 km). |
-| `CATALOG_SEARCH_RATE_LIMIT` | `60` | Búsquedas por usuario autenticado dentro de una ventana. |
-| `CATALOG_SEARCH_RATE_WINDOW_SECONDS` | `60` | Duración de la ventana de rate limit de búsqueda. |
+| Variable                             | Default | Uso                                                                                    |
+| ------------------------------------ | ------: | -------------------------------------------------------------------------------------- |
+| `CATALOG_LOT_MAX_HORIZON_DAYS`       |    `90` | Horizonte máximo de disponibilidad de un lote (límite de configuración: 365 días).     |
+| `CATALOG_SEARCH_RADIUS_MAX_KM`       |   `500` | Radio máximo permitido para búsqueda por ubicación (límite de configuración: 1000 km). |
+| `CATALOG_SEARCH_RATE_LIMIT`          |    `60` | Búsquedas por usuario autenticado dentro de una ventana.                               |
+| `CATALOG_SEARCH_RATE_WINDOW_SECONDS` |    `60` | Duración de la ventana de rate limit de búsqueda.                                      |
 
 El rate limit de búsqueda se mantiene en memoria por proceso. Ver [arquitectura del catálogo](docs/ARCHITECTURE.md#catálogo) y [ADR-010](docs/adr/ADR-010.md).
 
@@ -148,6 +148,41 @@ pnpm --filter @tracop/api test  # solo la API, con cobertura
 ```
 
 Las pruebas de la API requieren Docker: Jest con `--coverage` levanta PostgreSQL 16 con Testcontainers. Las pruebas de identity son `apps/api/test/identity.e2e-spec.ts` (flujo, concurrencia y reuse detection), `identity-logging.e2e-spec.ts` (redacción de logs), `identity-application.spec.ts`, `identity-authorization.spec.ts` y `otp-sender.contract-spec.ts`. La cobertura se mide sobre dominio, aplicación, `app.module` y `shared/kernel`; umbrales: dominio 90 % de líneas, aplicación 80 %, global 75 %.
+
+## Lot photos
+
+Lot photos use an S3-compatible object store. For local development, set `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` in `.env`, then start the optional MinIO profile:
+
+```bash
+docker compose --profile storage up -d minio
+```
+
+MinIO serves the S3 API at `http://127.0.0.1:9000` and its console at `http://127.0.0.1:9001`. Create the bucket named by `S3_BUCKET` before using photo endpoints. Set `S3_ENDPOINT` to the API endpoint and `S3_PUBLIC_ENDPOINT` to an endpoint reachable by clients (defaults to `S3_ENDPOINT`). Configure `S3_REGION`, `S3_BUCKET`, and credentials. `S3_API_ACCESS_KEY`/`S3_API_SECRET_KEY` are used for API object operations; `S3_POLICY_ACCESS_KEY`/`S3_POLICY_SECRET_KEY` sign upload POST policies. If policy credentials are omitted, the adapter falls back to API credentials. Production requires both endpoint(s) over HTTPS, bucket, region, and both credential pairs.
+
+The `.env.example` comments describe suggested least-privilege S3 permissions: API credentials need `GetObject`, `PutObject`, and `DeleteObject` for bucket objects and `ListBucket` restricted to `incoming/` and `photos/`; policy credentials need `PutObject` on `incoming/*`. These permissions have not been verified against a real S3 provider. Do not use root credentials in production.
+
+Photo limit defaults (all configurable) are:
+
+| Variable                                   |    Default | Purpose                                          |
+| ------------------------------------------ | ---------: | ------------------------------------------------ |
+| `CATALOG_PHOTO_MAX_COUNT`                  |        `5` | Maximum photos per lot (configuration cap: 5).   |
+| `CATALOG_PHOTO_MAX_BYTES`                  |  `5242880` | Maximum input/output size in bytes (cap: 5 MiB). |
+| `CATALOG_PHOTO_MAX_INPUT_PIXELS`           | `25000000` | Maximum input pixel count.                       |
+| `CATALOG_PHOTO_MAX_INPUT_DIMENSION`        |    `10000` | Maximum input width or height.                   |
+| `CATALOG_PHOTO_MAX_OUTPUT_DIMENSION`       |     `2048` | Maximum output width or height.                  |
+| `CATALOG_PHOTO_PENDING_TTL_SECONDS`        |     `1800` | Pending reservation lifetime.                    |
+| `CATALOG_PHOTO_UPLOAD_URL_TTL_SECONDS`     |      `900` | Upload policy lifetime.                          |
+| `CATALOG_PHOTO_DOWNLOAD_URL_TTL_SECONDS`   |      `300` | Download URL lifetime.                           |
+| `CATALOG_PHOTO_PURGE_GRACE_SECONDS`        |     `3600` | Minimum age before orphan deletion.              |
+| `CATALOG_PHOTO_WEBP_QUALITY`               |       `80` | WebP quality.                                    |
+| `CATALOG_PHOTO_CONCURRENCY`                |        `2` | In-process image conversions.                    |
+| `CATALOG_PHOTO_PROCESSING_LEASE_SECONDS`   |      `300` | Processing claim lease.                          |
+| `CATALOG_PHOTO_UPLOAD_RATE_LIMIT`          |       `30` | Upload preparations per user per window.         |
+| `CATALOG_PHOTO_UPLOAD_RATE_WINDOW_SECONDS` |       `60` | Rate-limit window.                               |
+
+Run `pnpm catalog:purge-orphan-photos` to expire pending photo reservations and remove old unreferenced objects from `incoming/` and `photos/`. Schedule this command externally if periodic cleanup is needed; it does not purge all incoming objects or configure automatic bucket lifecycle cleanup.
+
+See [ADR-011](docs/adr/ADR-011.md) and [catalog photo architecture](docs/ARCHITECTURE.md#lot-photos).
 
 ## SonarCloud (pasos manuales)
 

@@ -109,6 +109,9 @@ describePostgres('identity logging redaction across the full flow', () => {
       });
 
     const logger = app.get<ReturnType<typeof createLogger>>(APP_LOGGER);
+    const signedUrl = 'https://storage.example.test/bucket/incoming/probe?X-Amz-Signature=probe';
+    const signedPolicy = 'probe-upload-policy-base64';
+    const signedFieldKey = 'incoming/probe-field-key';
     logger.info(
       {
         phone: `+57${phone}`,
@@ -118,6 +121,11 @@ describePostgres('identity logging redaction across the full flow', () => {
         authorization: `Bearer ${accessToken}`,
         ip: '127.0.0.1',
         remoteAddress: '::ffff:127.0.0.1',
+        uploadPolicy: {
+          url: signedUrl,
+          policy: signedPolicy,
+          fields: { key: signedFieldKey, 'x-amz-signature': 'probe' },
+        },
         req: {
           ip: '127.0.0.1',
           socket: { remoteAddress: '::ffff:127.0.0.1' },
@@ -148,8 +156,13 @@ describePostgres('identity logging redaction across the full flow', () => {
       rotatedRefresh,
       '127.0.0.1',
       '203.0.113.9',
+      signedUrl,
+      signedPolicy,
+      signedFieldKey,
+      'x-amz-signature',
     ]) {
       expect(findJsonScalarPaths(logRecords, secret)).toEqual([]);
+      expect(output).not.toContain(secret);
     }
     expect(output).not.toContain('Bearer ');
   });

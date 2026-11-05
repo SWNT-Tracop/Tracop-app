@@ -35,14 +35,27 @@ This cursor convention is implemented for catalog lot search; do not assume all 
 
 Rate limits are configurable; the following are the current default settings:
 
-| Surface | Default limit | Behavior |
-| --- | --- | --- |
-| Catalog lot search | 60 requests per authenticated user per 60-second window | In-memory limiter; excess requests return 429 and `Retry-After`. |
-| Telegram webhook | 20 updates per sender and 300 globally per 60-second window | In-memory limiter; excess updates are dropped without a reply, while the webhook acknowledges the update with HTTP 200. Sender identifiers are HMAC-keyed in the limiter. |
-| OTP requests | 3 per phone per 600-second window; 1 per phone per 60-second cooldown | Additional request limits are 30 per IP for OTP requests and 60 per IP for OTP verification, each per 600 seconds. These limits are configurable. |
+| Surface            | Default limit                                                         | Behavior                                                                                                                                                                  |
+| ------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Catalog lot search | 60 requests per authenticated user per 60-second window               | In-memory limiter; excess requests return 429 and `Retry-After`.                                                                                                          |
+| Telegram webhook   | 20 updates per sender and 300 globally per 60-second window           | In-memory limiter; excess updates are dropped without a reply, while the webhook acknowledges the update with HTTP 200. Sender identifiers are HMAC-keyed in the limiter. |
+| OTP requests       | 3 per phone per 600-second window; 1 per phone per 60-second cooldown | Additional request limits are 30 per IP for OTP requests and 60 per IP for OTP verification, each per 600 seconds. These limits are configurable.                         |
 
 These defaults are not a guarantee of globally coordinated limits across multiple API instances: the catalog and Telegram limiters are in-memory. The OTP counters use the database-backed identity rate-limit repository.
 
 ## Location privacy
 
 Lot search accepts `lat`, `lng`, and `radiusKm` together. Coordinates outside Colombia are rejected when both `lat` and `lng` are supplied. In lot responses, exact lot coordinates and `providerId` are included only for the lot's provider. Other viewers may receive a rounded `distanceKm` when search computed one; this is not an exact location. The search radius is subject to the server-configured maximum. These response rules are specifically enforced by catalog lot serialization and should not be assumed for unrelated endpoints.
+
+## Lot photos
+
+All photo-management routes require authentication and the `producer` or `supplier` role. The caller must own the lot. Photo reads are included in lot responses as `photos: [{ id, position, url }]`; search/list responses include at most the first ready photo, while lot detail includes all ready photos. There are no separate `mediaRef` or `objectKey` response fields.
+
+| Method and path                            | Purpose                                           | Request / result                                                                                                                                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /lots/{id}/photos`                   | Reserve a photo and prepare a direct upload       | Body: `{ "photoId": "<UUID v7>" }`. Returns `state: "pending"` and `uploadPolicy: { url, fields, expiresAt }`; send the file to the returned URL using the returned POST fields. A retry may return `processing` or `ready` without a new policy. |
+| `POST /lots/{id}/photos/{photoId}/confirm` | Validate/process the uploaded image               | No body. Returns `pending`/`processing`/`ready` state. A ready result means the processed photo is available in lot reads.                                                                                                                        |
+| `DELETE /lots/{id}/photos/{photoId}`       | Soft-delete the photo and request object deletion | No body; returns `{ "status": "deleted" }`.                                                                                                                                                                                                       |
+| `PATCH /lots/{id}/photos/order`            | Set the complete order of ready photos            | Body: `{ "photoIds": ["<photo UUID>", ...] }`; returns `{ "status": "ordered" }`.                                                                                                                                                                 |
+
+Upload policies are size-limited and expire; supported input formats are JPEG, PNG, and WebP, and processed output is always WebP. Photo counts, byte/pixel/dimension limits, expiries, processing lease, and upload rate limits are configurable; see [README](../README.md#lot-photos). Presigned URLs and object keys are sensitive temporary access material. The upload key is necessarily returned as `fields.key`, and the random processed-object key is embedded in the presigned download URL; clients must not log or persist these URLs beyond their intended use. Responses do not expose independent media-reference/object-key properties. Exact lot coordinates and `providerId` are not exposed to third-party viewers; those fields are included only for the lot's provider, as described above. Do not infer privacy behavior for unrelated endpoints.
