@@ -221,20 +221,31 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
 
   it('backfills pre-existing catalog rows with reusable payload builders and skips them on rerun', async () => {
     const existingDraft = await createLot({ publish: false });
+    const existingPublished = await createLot();
     await pool.query('TRUNCATE sync.change_log');
 
     const first = await catalog.backfillChanges();
-    const lotRow = await pool.query(
+    const lotRows = await pool.query(
       `SELECT op, owner_user_id, payload FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1`,
       [existingDraft.id],
     );
+    const publishedRow = await pool.query(
+      `SELECT op, owner_user_id, payload FROM sync.change_log WHERE entity = 'lot' AND entity_id = $1`,
+      [existingPublished.id],
+    );
     const second = await catalog.backfillChanges();
 
-    expect(lotRow.rows).toHaveLength(1);
-    expect(lotRow.rows[0]).toMatchObject({
+    expect(lotRows.rows).toHaveLength(1);
+    expect(lotRows.rows[0]).toMatchObject({
       op: 'upsert',
       owner_user_id: producer.sub,
       payload: { id: existingDraft.id, version: 1, status: 'draft' },
+    });
+    expect(publishedRow.rows).toHaveLength(1);
+    expect(publishedRow.rows[0]).toMatchObject({
+      op: 'upsert',
+      owner_user_id: producer.sub,
+      payload: { id: existingPublished.id, version: 2, status: 'published' },
     });
     expect(first.recorded).toBeGreaterThan(0);
     expect(second).toEqual({ recorded: 0, skipped: first.recorded });
