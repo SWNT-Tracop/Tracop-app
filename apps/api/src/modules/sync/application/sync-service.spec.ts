@@ -32,7 +32,6 @@ describe('SyncService', () => {
       },
       appendBaselineIfAbsent: async () => null,
       hasEntityHistory: async () => false,
-      latestChangeSeq: async (entity, id, owner) => changes.get(`${entity}:${id}:${owner}`) ?? null,
       pull: async ({ cursor }) => ({ changes: [], nextCursor: cursor, hasMore: false }),
     };
     const registry = new SyncOperationHandlerRegistry();

@@ -71,16 +71,10 @@ export class SyncService {
       } else {
         try {
           const applied = await this.uow.run(() => handler.handle(actor, operation));
-          const serverSeq = await this.repository.latestChangeSeq(
-            operation.entity,
-            operation.entityId,
-            actor.sub,
-          );
           result = {
             opId: operation.opId,
             status: 'applied',
             serverVersion: applied.serverVersion,
-            ...(serverSeq ? { serverSeq } : {}),
           };
         } catch (error) {
           result = mapFailure(operation.opId, error);

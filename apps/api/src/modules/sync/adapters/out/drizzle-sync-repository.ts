@@ -62,6 +62,7 @@ export class DrizzleSyncRepository implements SyncRepositoryPort {
 
   async appendChange(change: ChangeRecord): Promise<string> {
     await this.acquireSequenceLock();
+    // Sync replies omit serverSeq: keep the sequence lock adjacent to its allocating INSERT.
     return this.insertChange(change);
   }
 
@@ -79,27 +80,6 @@ export class DrizzleSyncRepository implements SyncRepositoryPort {
       .where(and(eq(changeLog.entity, entity), eq(changeLog.entityId, entityId)))
       .limit(1);
     return row !== undefined;
-  }
-
-  async latestChangeSeq(
-    entity: string,
-    entityId: string,
-    ownerUserId: string,
-  ): Promise<string | null> {
-    const [row] = await this.database
-      .current()
-      .select({ serverSeq: changeLog.serverSeq })
-      .from(changeLog)
-      .where(
-        and(
-          eq(changeLog.entity, entity),
-          eq(changeLog.entityId, entityId),
-          eq(changeLog.ownerUserId, ownerUserId),
-        ),
-      )
-      .orderBy(sql`${changeLog.serverSeq} DESC`)
-      .limit(1);
-    return row?.serverSeq.toString() ?? null;
   }
 
   async pull(input: { userId: string; cursor: string; limit: number }) {

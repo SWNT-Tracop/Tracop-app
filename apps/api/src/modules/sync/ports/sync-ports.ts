@@ -45,7 +45,6 @@ export interface SyncRepositoryPort {
   appendChange(change: ChangeRecord): Promise<string>;
   appendBaselineIfAbsent(change: ChangeRecord): Promise<string | null>;
   hasEntityHistory(entity: string, entityId: string): Promise<boolean>;
-  latestChangeSeq(entity: string, entityId: string, ownerUserId: string): Promise<string | null>;
   pull(input: {
     readonly userId: string;
     readonly cursor: string;
