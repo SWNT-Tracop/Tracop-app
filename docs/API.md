@@ -26,6 +26,44 @@ The response body is a JSON object. Depending on the error, it contains:
 
 This cursor convention is implemented for catalog lot search; do not assume all list endpoints are paginated this way.
 
+## Offline sync
+
+`POST /sync/push` and `GET /sync/pull` require `Authorization: Bearer <accessToken>`. The authenticated access token supplies the user ID, role, and device ID (`did`); neither endpoint accepts a `deviceId` in its request. Requests are rate-limited per authenticated user and endpoint: defaults are 30 push requests and 120 pull requests per 60-second in-memory window (`SYNC_PUSH_RATE_LIMIT`, `SYNC_PULL_RATE_LIMIT`, and `SYNC_RATE_WINDOW_SECONDS`). Excess requests return HTTP 429 and may include `Retry-After`. These limits are not coordinated between API instances.
+
+### Push operations
+
+The JSON body limit for `POST /sync/push` is 256 KiB. Other JSON routes use a 64 KiB limit. The request object and each operation are strict: unknown fields are rejected with HTTP 400. The body contains `operations`, an array of 1–50 operations:
+
+```json
+{
+  "operations": [
+    {
+      "opId": "0190f47a-8b45-7cc2-9a1e-123456789abc",
+      "entity": "lot",
+      "entityId": "0190f47a-8b45-7cc2-9a1e-123456789abd",
+      "type": "create",
+      "payload": {}
+    }
+  ]
+}
+```
+
+Each operation has a UUID v7 `opId`, a trimmed `entity` string of 1–64 characters, a UUID `entityId`, a `type` of `create`, `update`, `transition`, or `delete`, and an object `payload`. `baseVersion`, when present, must be a positive integer. The only currently registered push handler is for `lot`; other entity names are rejected at operation level. `create` must omit `baseVersion`, and the lot payload's `id` must equal `entityId`. Lot `update`, `transition`, and `delete` require `baseVersion`, which must match the current server version. For sequential operations on one lot, use the successful preceding result's `serverVersion` as the next operation's `baseVersion`.
+
+`opId` is the idempotency key. The server hashes the canonical JSON representation of the full operation using SHA-256. Repeating an `opId` for the same user and hash replays its prior result; reusing it with a different hash returns `rejected` with `op_id_reused`, and using an operation recorded for another user is rejected. A failed operation causes later operations for the same `entity:entityId` in that push batch to be rejected as dependent; it does not block independent entities.
+
+The response is `{ "results": [...] }`. Each result has `opId` and a `status` of `applied`, `rejected`, or `conflict`; it may also include `code`, `serverVersion`, and `serverSeq`. The operation-level codes defined by the contract are `invalid_payload`, `unknown_entity`, `not_found`, `forbidden`, `version_conflict`, `invalid_transition`, `unsupported_transition`, `dependency_failed`, and `op_id_reused`. Version mismatches are `conflict` results with `version_conflict` and include `serverVersion` when available. Other handled operation failures are `rejected` results. A deleted lot must be a draft: successful deletion is logical, and its pull change is a `delete` with `payload.tombstone: true`. Published lots are cancelled, not deleted.
+
+### Pull changes
+
+`GET /sync/pull` accepts optional `cursor` and `limit` query parameters. `cursor` is a decimal `server_seq` (not a client timestamp), defaults to `0`, and must be a non-negative decimal string with at most 19 digits and no leading zeroes except `0`. `limit` defaults to 200 and must be an integer from 1 to 500. Unknown query parameters are rejected.
+
+The response is `{ "changes": [...], "nextCursor": "...", "hasMore": false }`. Changes are returned in ascending `server_seq` order and contain `serverSeq`, `entity`, `entityId`, `op`, `payload`, and `occurredAt`. The current change-log taxonomy permits entities `category`, `product`, and `lot`, and operations `upsert`, `delete`, and `cancel`. Pull includes globally owned changes (`owner_user_id IS NULL`) and changes owned by the authenticated user; it includes changes originating from the requesting device. Apply a change only if its entity version is newer than the local version. When `hasMore` is true, `nextCursor` is the last returned change's sequence; otherwise it advances to the current global sequence horizon, including over rows filtered out by ownership. Save and send back the returned cursor unchanged.
+
+### HTTP errors
+
+Both routes return HTTP 400 for invalid query/body validation, HTTP 401 when authentication is missing or invalid, and HTTP 429 when the per-user sync rate limit is exceeded. Push can also return HTTP 413 when its 256 KiB body limit is exceeded. Error bodies follow the shared HTTP error format described above; validation and body-size errors do not promise a route-specific `code`. Push business/operation failures are represented in the HTTP 200 `results` array, not as per-operation HTTP error responses. The controller documents pull's HTTP 400, 401, and 429 responses and push's HTTP 400, 401, 413, and 429 responses.
+
 ## IDs and idempotency
 
 - Lot creation validates that its client-supplied ID is UUID v7. Category and product creation also accept a client-supplied ID, but their schemas validate UUID format without enforcing version 7. Do not infer uniform UUID v7 enforcement across create endpoints.
