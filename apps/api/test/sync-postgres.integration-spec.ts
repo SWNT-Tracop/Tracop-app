@@ -42,6 +42,57 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
     );
   });
 
+  it('enforces sync operation, outcome, hash, and size constraints in PostgreSQL', async () => {
+    const changeId = '00000000-0000-7000-8000-000000000021';
+    await expect(
+      pool.query(
+        `INSERT INTO sync.change_log (entity, entity_id, op, payload, occurred_at)
+       VALUES ('lot', $1, 'unknown', '{}', now())`,
+        [changeId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.change_log (entity, entity_id, op, payload, occurred_at)
+       VALUES (repeat('x', 65), $1, 'upsert', '{}', now())`,
+        [changeId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.change_log (entity, entity_id, op, payload, occurred_at)
+       VALUES ('lot', $1, 'upsert', jsonb_build_object('padding', repeat('x', 262145)), now())`,
+        [changeId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.processed_operations
+       (op_id, device_id, user_id, entity, entity_id, result, payload_hash, processed_at)
+       VALUES ($1, $2, $3, 'lot', $4, '{"status":"unknown"}', repeat('a', 64), now())`,
+        [
+          '00000000-0000-7000-8000-000000000022',
+          '00000000-0000-7000-8000-000000000023',
+          owner,
+          changeId,
+        ],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.processed_operations
+       (op_id, device_id, user_id, entity, entity_id, result, payload_hash, processed_at)
+       VALUES ($1, $2, $3, 'lot', $4, '{"status":"applied"}', 'bad-hash', now())`,
+        [
+          '00000000-0000-7000-8000-000000000024',
+          '00000000-0000-7000-8000-000000000025',
+          owner,
+          changeId,
+        ],
+      ),
+    ).rejects.toThrow();
+  });
+
   afterAll(async () => {
     await app?.close();
   });
@@ -74,16 +125,28 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
     }
   });
 
-  it('filters private changes and explains pull with and without other users’ rows', async () => {
+  it('returns global taxonomy and own lots only, and explains pull with and without other users’ rows', async () => {
     await pool.query(
       `INSERT INTO sync.change_log (entity, entity_id, op, payload, owner_user_id, occurred_at)
        VALUES ('lot', '00000000-0000-7000-8000-000000000003', 'upsert', '{"version":1}', $1, now()),
-              ('lot', '00000000-0000-7000-8000-000000000004', 'upsert', '{"version":1}', $2, now())`,
+              ('lot', '00000000-0000-7000-8000-000000000004', 'upsert', '{"version":1}', $2, now()),
+              ('lot', '00000000-0000-7000-8000-000000000006', 'cancel', '{"tombstone":true}', $2, now()),
+              ('category', '00000000-0000-7000-8000-000000000007', 'upsert', '{"name":"Tubérculos"}', NULL, now())`,
       [owner, other],
     );
     const privateRows = await sync.pull({ sub: owner, role: 'producer', did: 'device-a' }, '0', 20);
-    expect(privateRows.changes).toHaveLength(1);
-    expect(privateRows.changes[0]?.entityId).toBe('00000000-0000-7000-8000-000000000003');
+    expect(privateRows.changes.map(({ entityId }) => entityId)).toEqual([
+      '00000000-0000-7000-8000-000000000003',
+      '00000000-0000-7000-8000-000000000007',
+    ]);
+    const thirdUserRows = await sync.pull(
+      { sub: '00000000-0000-7000-8000-000000000009', role: 'producer', did: 'device-c' },
+      '0',
+      20,
+    );
+    expect(thirdUserRows.changes.map(({ entityId }) => entityId)).toEqual([
+      '00000000-0000-7000-8000-000000000007',
+    ]);
 
     const withoutPrivate = await pool.query(
       `EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS)
@@ -117,7 +180,7 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
       `INSERT INTO sync.change_log (entity, entity_id, op, payload, owner_user_id, occurred_at)
        VALUES ('lot', '00000000-0000-7000-8000-000000000011', 'upsert', '{"version":1}', $1, now()),
               ('lot', '00000000-0000-7000-8000-000000000012', 'upsert', '{"version":1}', $2, now()),
-              ('lot', '00000000-0000-7000-8000-000000000013', 'upsert', '{"version":1}', NULL, now()),
+              ('category', '00000000-0000-7000-8000-000000000013', 'upsert', '{"name":"Frutas"}', NULL, now()),
               ('lot', '00000000-0000-7000-8000-000000000014', 'upsert', '{"version":1}', $1, now())`,
       [owner, other],
     );
