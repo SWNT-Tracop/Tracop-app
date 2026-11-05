@@ -40,6 +40,11 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
     process.stdout.write(
       `Applied sync indexes (PostgreSQL catalog):\n${JSON.stringify(indexes.rows, null, 2)}\n`,
     );
+    expect(columns.rows.map(({ table_name }) => table_name)).toContain('change_log');
+    expect(columns.rows.map(({ table_name }) => table_name)).toContain('processed_operations');
+    expect(
+      indexes.rows.some(({ indexname }) => indexname === 'change_log_owner_server_seq_idx'),
+    ).toBe(true);
   });
 
   it('enforces sync operation, outcome, hash, and size constraints in PostgreSQL', async () => {

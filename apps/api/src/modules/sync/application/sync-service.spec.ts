@@ -99,4 +99,13 @@ describe('SyncService', () => {
       'dependency_failed',
     ]);
   });
+
+  it('registers and retrieves a handler and rejects duplicate entity handlers', () => {
+    const registry = new SyncOperationHandlerRegistry();
+    const handler = { entity: 'lot', handle: async () => ({ serverVersion: 1 }) };
+    registry.register(handler);
+    expect(registry.get('lot')).toBe(handler);
+    expect(registry.get('unknown')).toBeUndefined();
+    expect(() => registry.register(handler)).toThrow('Duplicate sync handler: lot');
+  });
 });
