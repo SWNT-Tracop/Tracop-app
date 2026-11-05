@@ -508,7 +508,7 @@ export class CatalogService {
   }
 
   private lotOwner(lot: LotProps): string | null {
-    return lot.status === 'draft' ? lot.providerId : null;
+    return lot.providerId;
   }
 
   private categoryPayload(category: CategoryProps): Record<string, unknown> {
