@@ -134,6 +134,20 @@ Configuración del catálogo en `.env` (todos los valores tienen defaults):
 
 El rate limit de búsqueda se mantiene en memoria por proceso. Ver [arquitectura del catálogo](docs/ARCHITECTURE.md#catálogo) y [ADR-010](docs/adr/ADR-010.md).
 
+## Sincronización del catálogo (sync)
+
+La sincronización implementada cubre cambios de `category`, `product` y `lot`. `POST /sync/push` acepta entre 1 y 50 operaciones; actualmente solo hay manejador de push para `lot`. `GET /sync/pull` acepta páginas de 1 a 500 cambios y usa por defecto `limit=200` y `cursor=0`. Requiere autenticación.
+
+En pull, categorías y productos se registran como taxonomía global visible para usuarios autenticados; los cambios de lotes se entregan únicamente a su dueño. Esto no implementa un catálogo público offline: no hay pull público sin autenticación ni soporte de sincronización para otras entidades.
+
+Para inicializar el registro de cambios con el estado actual del catálogo, ejecuta:
+
+```bash
+pnpm catalog:backfill-changes
+```
+
+El comando registra cambios base para categorías, productos y lotes que aún no tengan historial, y reporta cuántos registró o saltó. No reemplaza el pull/push ni agrega manejadores de sincronización para otras entidades.
+
 ## Mensajería (messaging)
 
 El módulo `messaging` recibe updates de Telegram (webhook o polling), normaliza a `InboundMessage`, aplica rate limiting e idempotencia, y delega a la aplicación.
