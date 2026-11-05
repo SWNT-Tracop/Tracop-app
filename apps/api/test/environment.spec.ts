@@ -25,7 +25,7 @@ const environmentKeys = [
 ];
 const previousValues = new Map<string, string | undefined>();
 const productionS3 = {
-  S3_ENDPOINT: 'http://127.0.0.1:9000',
+  S3_ENDPOINT: 'https://s3.example.test',
   S3_BUCKET: 'tracop-test',
   S3_REGION: 'us-east-1',
   S3_API_ACCESS_KEY: 'api-key',
@@ -225,5 +225,61 @@ describe('runtime environment validation', () => {
       S3_POLICY_SECRET_KEY: '',
     });
     expect(() => loadAppEnvironment('/tmp/tracop-no-env')).toThrow(/S3_ENDPOINT/);
+  });
+
+  it.each(['S3_ENDPOINT', 'S3_PUBLIC_ENDPOINT'] as const)(
+    'rejects a non-HTTPS %s in production',
+    (endpointKey) => {
+      Object.assign(process.env, {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://localhost/test',
+        JWT_SECRET: 'j'.repeat(32),
+        OTP_HMAC_SECRET: 'o'.repeat(32),
+        RATE_LIMIT_HMAC_SECRET: 'r'.repeat(32),
+        OTP_SENDER: 'telegram',
+        TELEGRAM_MODE: 'webhook',
+        TELEGRAM_BOT_TOKEN: '123456:token',
+        TELEGRAM_WEBHOOK_SECRET: 'secret',
+        TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
+        S3_ENDPOINT: 'https://s3.example.test',
+        S3_PUBLIC_ENDPOINT: 'https://files.example.test',
+        S3_BUCKET: 'tracop-test',
+        S3_REGION: 'us-east-1',
+        S3_API_ACCESS_KEY: 'api-key',
+        S3_API_SECRET_KEY: 'api-secret',
+        S3_POLICY_ACCESS_KEY: 'policy-key',
+        S3_POLICY_SECRET_KEY: 'policy-secret',
+        [endpointKey]: 'http://storage.example.test',
+      });
+
+      expect(() => loadAppEnvironment('/tmp/tracop-no-env')).toThrow();
+    },
+  );
+
+  it('requires HTTPS for the effective public S3 endpoint in production', () => {
+    Object.assign(process.env, {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgres://localhost/test',
+      JWT_SECRET: 'j'.repeat(32),
+      OTP_HMAC_SECRET: 'o'.repeat(32),
+      RATE_LIMIT_HMAC_SECRET: 'r'.repeat(32),
+      OTP_SENDER: 'telegram',
+      TELEGRAM_MODE: 'webhook',
+      TELEGRAM_BOT_TOKEN: '123456:token',
+      TELEGRAM_WEBHOOK_SECRET: 'secret',
+      TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
+      S3_ENDPOINT: 'https://s3.example.test',
+      S3_BUCKET: 'tracop-test',
+      S3_REGION: 'us-east-1',
+      S3_API_ACCESS_KEY: 'api-key',
+      S3_API_SECRET_KEY: 'api-secret',
+      S3_POLICY_ACCESS_KEY: 'policy-key',
+      S3_POLICY_SECRET_KEY: 'policy-secret',
+    });
+    delete process.env.S3_PUBLIC_ENDPOINT;
+
+    expect(loadAppEnvironment('/tmp/tracop-no-env').S3_PUBLIC_ENDPOINT).toBe(
+      'https://s3.example.test',
+    );
   });
 });

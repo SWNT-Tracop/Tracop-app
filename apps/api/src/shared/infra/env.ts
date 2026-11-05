@@ -109,6 +109,12 @@ const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
       if (!value[key])
         ctx.addIssue({ code: 'custom', path: [key], message: 'Required in production.' });
     }
+    for (const key of ['S3_ENDPOINT', 'S3_PUBLIC_ENDPOINT'] as const) {
+      const endpoint = value[key] ?? (key === 'S3_PUBLIC_ENDPOINT' ? value.S3_ENDPOINT : undefined);
+      if (endpoint && new URL(endpoint).protocol !== 'https:') {
+        ctx.addIssue({ code: 'custom', path: [key], message: 'Production requires an https URL.' });
+      }
+    }
   }
   if (value.TELEGRAM_MODE === 'polling' && value.NODE_ENV !== 'development') {
     ctx.addIssue({
