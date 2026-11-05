@@ -6,7 +6,7 @@ import type {
   ProcessedOperation,
   SyncRepositoryPort,
 } from '../../ports/sync-ports.js';
-import { changeLog, processedOperations } from './drizzle-schema.js';
+import { processedOperations } from './drizzle-schema.js';
 
 const OP_LOCK_NAMESPACE = 1_414_677_711;
 const SEQUENCE_LOCK_NAMESPACE = 1_414_677_712;
@@ -63,23 +63,14 @@ export class DrizzleSyncRepository implements SyncRepositoryPort {
   async appendChange(change: ChangeRecord): Promise<string> {
     await this.acquireSequenceLock();
     // Sync replies omit serverSeq: keep the sequence lock adjacent to its allocating INSERT.
-    return this.insertChange(change);
+    const serverSeq = await this.insertChange(change, false);
+    if (serverSeq === null) throw new Error('Failed to record sync change.');
+    return serverSeq;
   }
 
   async appendBaselineIfAbsent(change: ChangeRecord): Promise<string | null> {
     await this.acquireSequenceLock();
-    const result = await this.database.current().execute(sql`
-      INSERT INTO sync.change_log (entity, entity_id, op, payload, owner_user_id, occurred_at)
-      SELECT ${change.entity}, ${change.entityId}::uuid, ${change.op}, ${JSON.stringify(change.payload)}::jsonb,
-             ${change.ownerUserId}::uuid, ${change.occurredAt}
-      WHERE NOT EXISTS (
-        SELECT 1 FROM sync.change_log
-        WHERE entity = ${change.entity} AND entity_id = ${change.entityId}::uuid
-      )
-      RETURNING server_seq
-    `);
-    const inserted = result.rows[0] as { server_seq: string | bigint } | undefined;
-    return inserted ? String(inserted.server_seq) : null;
+    return this.insertChange(change, true);
   }
 
   async pull(input: { userId: string; cursor: string; limit: number }) {
@@ -134,20 +125,21 @@ export class DrizzleSyncRepository implements SyncRepositoryPort {
       .execute(sql`SELECT pg_advisory_xact_lock(${SEQUENCE_LOCK_NAMESPACE}, 1)`);
   }
 
-  private async insertChange(change: ChangeRecord): Promise<string> {
-    const [inserted] = await this.database
-      .current()
-      .insert(changeLog)
-      .values({
-        entity: change.entity,
-        entityId: change.entityId,
-        op: change.op,
-        payload: change.payload,
-        ownerUserId: change.ownerUserId,
-        occurredAt: change.occurredAt,
-      })
-      .returning({ serverSeq: changeLog.serverSeq });
-    if (!inserted) throw new Error('Failed to record sync change.');
-    return inserted.serverSeq.toString();
+  private async insertChange(change: ChangeRecord, onlyIfAbsent: boolean): Promise<string | null> {
+    const condition = onlyIfAbsent
+      ? sql`NOT EXISTS (
+          SELECT 1 FROM sync.change_log
+          WHERE entity = ${change.entity} AND entity_id = ${change.entityId}::uuid
+        )`
+      : sql`TRUE`;
+    const result = await this.database.current().execute(sql`
+      INSERT INTO sync.change_log (entity, entity_id, op, payload, owner_user_id, occurred_at)
+      SELECT ${change.entity}, ${change.entityId}::uuid, ${change.op}, ${JSON.stringify(change.payload)}::jsonb,
+             ${change.ownerUserId}::uuid, ${change.occurredAt}
+      WHERE ${condition}
+      RETURNING server_seq
+    `);
+    const inserted = result.rows[0] as { server_seq: string | bigint } | undefined;
+    return inserted ? String(inserted.server_seq) : null;
   }
 }

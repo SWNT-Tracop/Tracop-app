@@ -5,6 +5,7 @@ import { AppModule } from '../src/bootstrap/app.module.js';
 import { DATABASE_POOL } from '../src/shared/infra/tokens.js';
 import { SyncService } from '../src/modules/sync/index.js';
 import { describePostgres } from './postgres-suite.js';
+import { findCoordinateExposure } from './helpers/coordinate-exposure.js';
 
 describePostgres('sync persistence and visibility (shared PostgreSQL Testcontainers)', () => {
   let app: INestApplicationContext;
@@ -59,6 +60,13 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
     await expect(
       pool.query(
         `INSERT INTO sync.change_log (entity, entity_id, op, payload, occurred_at)
+       VALUES ('unknown_entity', $1, 'upsert', '{}', now())`,
+        [changeId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.change_log (entity, entity_id, op, payload, occurred_at)
        VALUES (repeat('x', 65), $1, 'upsert', '{}', now())`,
         [changeId],
       ),
@@ -67,6 +75,13 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
       pool.query(
         `INSERT INTO sync.change_log (entity, entity_id, op, payload, occurred_at)
        VALUES ('lot', $1, 'upsert', jsonb_build_object('padding', repeat('x', 262145)), now())`,
+        [changeId],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.change_log (entity, entity_id, op, payload, occurred_at)
+       VALUES ('lot', $1, repeat('x', 33), '{}', now())`,
         [changeId],
       ),
     ).rejects.toThrow();
@@ -91,6 +106,32 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
         [
           '00000000-0000-7000-8000-000000000024',
           '00000000-0000-7000-8000-000000000025',
+          owner,
+          changeId,
+        ],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.processed_operations
+       (op_id, device_id, user_id, entity, entity_id, result, payload_hash, processed_at)
+       VALUES ($1, $2, $3, repeat('x', 65), $4, '{"status":"applied"}', repeat('a', 64), now())`,
+        [
+          '00000000-0000-7000-8000-000000000026',
+          '00000000-0000-7000-8000-000000000027',
+          owner,
+          changeId,
+        ],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      pool.query(
+        `INSERT INTO sync.processed_operations
+       (op_id, device_id, user_id, entity, entity_id, result, error_code, payload_hash, processed_at)
+       VALUES ($1, $2, $3, 'lot', $4, '{"status":"applied"}', repeat('e', 101), repeat('a', 64), now())`,
+        [
+          '00000000-0000-7000-8000-000000000028',
+          '00000000-0000-7000-8000-000000000029',
           owner,
           changeId,
         ],
@@ -130,12 +171,13 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
     }
   });
 
-  it('returns global taxonomy and own lots only, and explains pull with and without other users’ rows', async () => {
+  it('returns global taxonomy but no other owner’s published/draft lots or tombstones', async () => {
     await pool.query(
       `INSERT INTO sync.change_log (entity, entity_id, op, payload, owner_user_id, occurred_at)
-       VALUES ('lot', '00000000-0000-7000-8000-000000000003', 'upsert', '{"version":1}', $1, now()),
-              ('lot', '00000000-0000-7000-8000-000000000004', 'upsert', '{"version":1}', $2, now()),
-              ('lot', '00000000-0000-7000-8000-000000000006', 'cancel', '{"tombstone":true}', $2, now()),
+       VALUES ('lot', '00000000-0000-7000-8000-000000000003', 'upsert', '{"version":1,"status":"draft"}', $1, now()),
+              ('lot', '00000000-0000-7000-8000-000000000004', 'upsert', '{"version":1,"status":"published"}', $2, now()),
+              ('lot', '00000000-0000-7000-8000-000000000005', 'upsert', '{"version":1,"status":"draft"}', $2, now()),
+              ('lot', '00000000-0000-7000-8000-000000000006', 'delete', '{"tombstone":true}', $2, now()),
               ('category', '00000000-0000-7000-8000-000000000007', 'upsert', '{"name":"Tubérculos"}', NULL, now())`,
       [owner, other],
     );
@@ -152,7 +194,11 @@ describePostgres('sync persistence and visibility (shared PostgreSQL Testcontain
     expect(thirdUserRows.changes.map(({ entityId }) => entityId)).toEqual([
       '00000000-0000-7000-8000-000000000007',
     ]);
+    expect(findCoordinateExposure(thirdUserRows, [{ latitude: 5.5, longitude: -73.4 }])).toEqual(
+      [],
+    );
 
+    // Retain the query-plan comparison with and without other owners' records.
     const withoutPrivate = await pool.query(
       `EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS)
        SELECT server_seq FROM sync.change_log
