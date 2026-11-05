@@ -305,45 +305,45 @@ type InboundMessage = {
 
 ### Modelo
 
-- El móvil es un **thick client**: SQLite local es la fuente de lectura de la UI.
-- Toda mutación se escribe primero en la BD local **y** en la tabla `outbox` local, y la UI se actualiza de inmediato (optimista).
-- Un **motor de sync** vacía el outbox cuando hay conexión y luego hace _pull_ de cambios del servidor.
+- The mobile client is a **thick client**: local SQLite is the UI's read source. A client-side outbox is the intended write path, but the server protocol does not define its local schema or persistence implementation.
+- **Only implemented catalog synchronization is supported:** pull publishes catalog changes for `category`, `product`, and `lot`; push accepts operations only for `lot`. Other entity handlers are not registered. Do not infer support for orders, check-ins, or payments.
 
-### Operación de sincronización
+### Implemented synchronization protocol
+
+The authenticated API accepts `POST /sync/push` with 1–50 strict operations:
 
 ```ts
 type SyncOperation = {
-  opId: string; // UUID v7, clave de idempotencia
-  deviceId: string;
-  entity: string; // 'lot' | 'order' | 'pickup_checkin' | 'payment_proof' ...
-  entityId: string;
-  type: 'create' | 'update' | 'delete' | 'transition';
+  opId: string; // UUID v7; idempotency key
+  entity: string; // 1–64 characters; currently only 'lot' has a push handler
+  entityId: string; // UUID
+  type: 'create' | 'update' | 'transition' | 'delete';
   payload: Record<string, unknown>;
-  baseVersion?: number; // versión que el cliente conocía
-  clientTs: string; // ISO UTC
+  baseVersion?: number; // positive integer, required for non-create lot operations
 };
 ```
 
-- **Push:** `POST /sync/push` con un lote de operaciones. El servidor registra cada `opId` en `sync.processed_operations`; reenviar la misma operación es inocuo.
-- **Pull:** `GET /sync/pull?cursor=<server_seq>` devuelve cambios por entidad desde el cursor. El cursor es un entero monotónico del servidor, **no** un timestamp del cliente.
-- **Respuesta por operación:** `applied | rejected | conflict` con motivo. El cliente debe manejar los tres.
+- `deviceId` is taken from the authenticated session, not supplied by the operation. There is no `clientTs` field in the API contract.
+- Operations are processed in request order. A duplicate `opId` with the same user and canonical payload hash replays its prior result; reusing it with a different payload, or across users, is rejected. A failed operation blocks later operations for the same `entity:entityId` in that push batch, but not independent entities.
+- Lot updates/transitions/deletes use optimistic concurrency: each operation's `baseVersion` must match the server's current version. For a sequence of edits to one lot, use the latest `serverVersion` returned by each successful operation as the next operation's `baseVersion`. A conflict returns the server version when available. Create has no `baseVersion`.
+- The actor must own the lot: push is authenticated and delegates to catalog ownership-checked use cases. The payload `id` for create must equal `entityId`.
+- `GET /sync/pull?cursor=<server_seq>&limit=<1..500>` is authenticated and defaults to cursor `0`, limit `200`. The cursor is an integer server sequence, not a client timestamp. Pull returns rows with `server_seq > cursor`, ordered ascending, where `owner_user_id IS NULL` or equals the authenticated user. It includes changes from the requesting device; clients apply a change only when its entity version is newer than the local version.
+- `nextCursor` is the last returned sequence when another page exists; otherwise it advances to the current global sequence horizon, including over rows filtered out by ownership. Persist the returned cursor. `hasMore` indicates an additional page.
+- Responses distinguish `applied`, `rejected`, and `conflict`. Operation results can include `code` and `serverVersion`; pull changes contain `serverSeq`, `entity`, `entityId`, `op`, `payload`, and `occurredAt`.
+- Deletes are logical for lots and publish a `delete` change with `payload.tombstone: true`; consumers must retain/apply the tombstone so deleted records do not reappear. Lot cancellation is a `cancel` change, not a tombstone.
 
 ### Política de conflictos por tipo de dato
 
-| Dato                   | Política                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Perfil, preferencias   | Última escritura gana (por `server_seq`)                                                                                       |
-| Lote (edición)         | Optimistic concurrency con `version`; si difiere, conflicto → la UI muestra la versión del servidor y pide confirmar           |
-| Inventario / reserva   | **El servidor decide.** La reserva offline es provisional; puede ser rechazada                                                 |
-| Pedido y pago          | **Solo eventos append-only** (transiciones). Nunca se sobrescribe estado; se valida la transición contra la máquina de estados |
-| Check-ins de logística | Append-only con `clientTs`; el servidor ordena por `server_seq`                                                                |
+| Dato               | Política                                                                                                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Catalog entities   | Pull is ordered by `server_seq`; ownership-scoped changes are returned only to their owner. Lot writes use `baseVersion` optimistic concurrency. |
+| Other entity types | No push handlers are currently implemented; do not treat the broader product roadmap as active protocol behavior.                                |
 
 ### Reglas
 
-- Reintentos con espera exponencial; límite de operaciones por lote (p. ej. 50).
-- Una operación rechazada **no** bloquea las siguientes independientes.
-- Adjuntos (fotos, comprobantes): subida por separado en segundo plano con URL prefirmada; la operación referencia el `mediaRef`.
-- Pruebas obligatorias de los escenarios: sin conexión prolongada, reenvío duplicado, conflicto de versión, rechazo de reserva, caída a mitad del lote.
+- The push request limit is 50 operations; pull page size is at most 500. Retry/backoff and local outbox behavior are client responsibilities and are not implemented by these API endpoints.
+- A rejected or conflicting operation does not block independent entities, but later operations for the same entity in that batch are rejected as dependent.
+- Photo synchronization is outside the current sync endpoint; do not assume attachment upload is part of this protocol.
 
 ---
 
@@ -411,8 +411,10 @@ Unidades actualmente aceptadas por el catálogo: `kg`, `g`, `lb`, `und`, `docena
 
 **sync**
 
-- `processed_operations` (op_id pk, device_id, entity, result, server_seq, processed_at)
-- `change_log` (server_seq bigserial, entity, entity_id, op, payload jsonb, occurred_at)
+- `processed_operations` (`op_id uuid` PK, `device_id uuid` NOT NULL, `user_id uuid` NOT NULL, `entity text` NOT NULL, `entity_id uuid` NOT NULL, `result jsonb` NOT NULL, `error_code text` nullable, `payload_hash text` NOT NULL, `server_seq bigint` nullable, `processed_at timestamptz` NOT NULL). Checks: entity length 1–64; nullable error code length ≤100; payload hash is 64 lowercase hexadecimal characters; result is a JSON object whose `status` is `applied`, `rejected`, or `conflict`.
+- `change_log` (`server_seq bigint` PK, default from `sync.change_log_server_seq_seq`; `entity text` NOT NULL; `entity_id uuid` NOT NULL; `op text` NOT NULL; `payload jsonb` NOT NULL; `owner_user_id uuid` nullable; `occurred_at timestamptz` NOT NULL). Index: `(owner_user_id, server_seq)`. Checks: entity length 1–64 and value in `category`, `product`, `lot`; op length 1–32 and value in `upsert`, `delete`, `cancel`; serialized payload size ≤262,144 bytes.
+
+There is currently no retention or compaction implementation for either `sync.change_log` or `sync.processed_operations`; define and implement it later rather than assuming a retention period.
 
 **backoffice**
 
@@ -760,6 +762,7 @@ MAPS_API_KEY=
 9. **Texto del aviso de privacidad y su versión inicial.** El valor técnico inicial es `v0-draft`; el equipo debe redactar y aprobar el texto legal.
 10. Verify the adapter against a real S3 provider and confirm the minimum IAM permissions for `S3_API_*` and `S3_POLICY_*`.
 11. Define the bucket lifecycle policy for `incoming/`. The code only purges old orphan objects from `incoming/` and `photos/` when `catalog:purge-orphan-photos` is run; it does not automatically clean up the bucket.
+12. Define and implement retention/compaction for `sync.change_log` and `sync.processed_operations`; neither table currently has an automatic retention process.
 
 ---
 
