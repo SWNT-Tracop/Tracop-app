@@ -1,0 +1,29 @@
+const { readFileSync } = require('node:fs');
+const { join, resolve } = require('node:path');
+const { tmpdir } = require('node:os');
+const { createHash } = require('node:crypto');
+
+const worktreeId = createHash('sha256').update(resolve(__dirname, '..')).digest('hex').slice(0, 12);
+const state = JSON.parse(
+  readFileSync(join(tmpdir(), `tracop-${worktreeId}-test-container.json`), 'utf8'),
+);
+Object.assign(process.env, {
+  NODE_ENV: 'test',
+  ...(state.available ? { DATABASE_URL: state.connectionString } : {}),
+  TRACOP_TESTCONTAINER_AVAILABLE: String(state.available === true),
+  JWT_SECRET: 'test-jwt-secret-not-for-real-use-000000000000',
+  JWT_ISSUER: 'tracop',
+  JWT_AUDIENCE: 'tracop-api',
+  JWT_CLOCK_TOLERANCE_SECONDS: '5',
+  OTP_HMAC_SECRET: 'test-otp-hmac-secret-not-for-real-use-00000000',
+  RATE_LIMIT_HMAC_SECRET: 'test-rate-limit-hmac-not-for-real-use-0000000',
+  PRIVACY_POLICY_VERSION: 'v0-draft',
+  ALLOWED_COUNTRY_CODES: '57',
+  TRUST_PROXY: 'false',
+  OTP_SENDER: 'console',
+  TELEGRAM_MODE: 'webhook',
+  TELEGRAM_BOT_TOKEN: '123456789:test-token-not-for-real-use',
+  TELEGRAM_WEBHOOK_SECRET: 'test_webhook_secret',
+  TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
+  TELEGRAM_API_ROOT: 'https://api.telegram.org',
+});

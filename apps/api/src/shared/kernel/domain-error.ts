@@ -7,3 +7,10 @@ export class DomainError extends Error {
     this.name = 'DomainError';
   }
 }
+
+export class RateLimitExceeded extends DomainError {
+  constructor(readonly retryAfter: number) {
+    super('Demasiadas solicitudes. Intenta nuevamente más tarde.', 'rate_limited');
+    this.name = 'RateLimitExceeded';
+  }
+}
