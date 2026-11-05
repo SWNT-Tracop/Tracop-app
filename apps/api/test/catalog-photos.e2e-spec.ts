@@ -18,6 +18,7 @@ import { DATABASE_POOL } from '../src/shared/infra/tokens.js';
 import { createId } from '../src/shared/kernel/ids.js';
 import { describePostgres } from './postgres-suite.js';
 import { createSyntheticJpeg } from './helpers/synthetic-image.js';
+import { findCoordinateExposure } from './helpers/coordinate-exposure.js';
 
 describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', () => {
   let app: INestApplication;
@@ -192,7 +193,7 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
     await app.close();
   });
 
-  it('accepts exactly the five allowed simultaneous reservations and reuses a pending key', async () => {
+  it('generates distinct unpredictable upload keys without lot, provider, photo or filename identifiers', async () => {
     const operator = await createOperator();
     const producer = await register('producer');
     const lotId = await createPublishedLot(producer.token, operator);
@@ -203,7 +204,7 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
         return request(app.getHttpServer())
           .post(`/lots/${lotId}/photos`)
           .set(actor(producer.token))
-          .send({ photoId })
+          .send({ photoId, filename: 'private-producer-filename.jpg' })
           .then((response) => ({ photoId, response }));
       }),
     );
@@ -212,6 +213,19 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
     expect(accepted).toHaveLength(5);
     expect(rejected).toHaveLength(5);
     for (const { response } of rejected) expect(response.body.code).toBe('photo_limit');
+
+    const incomingKeys = accepted.map(
+      ({ response }) => response.body.uploadPolicy.fields.key as string,
+    );
+    expect(new Set(incomingKeys).size).toBe(incomingKeys.length);
+    for (const { photoId, response } of accepted) {
+      const key = response.body.uploadPolicy.fields.key as string;
+      expect(key).toMatch(/^incoming\/[A-Za-z0-9_-]{43}$/);
+      expect(key).not.toContain(lotId);
+      expect(key).not.toContain(producer.userId);
+      expect(key).not.toContain(photoId);
+      expect(key).not.toContain('private-producer-filename.jpg');
+    }
 
     const first = accepted[0]!;
     const reissued = await request(app.getHttpServer())
@@ -307,11 +321,14 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
     expect(listedLot.photos).toHaveLength(1);
     expect(listedLot.photos[0].url).toContain('photos/');
     expect(listedLot.photos[0].url).not.toContain('incoming/');
+    expect(listedLot.photos[0].url).not.toContain(lotId);
     for (const photo of listedLot.photos) {
       expect(Object.keys(photo).sort()).toEqual(['id', 'position', 'url']);
       expect(photo).not.toHaveProperty('mediaRef');
       expect(photo).not.toHaveProperty('objectKey');
     }
+    expect(listedLot).not.toHaveProperty('providerId');
+    expect(findCoordinateExposure(listedLot, [{ latitude: 5.5, longitude: -73.4 }])).toEqual([]);
 
     const before = await request(app.getHttpServer())
       .get(`/lots/${lotId}`)
@@ -321,11 +338,14 @@ describePostgres('catalog photo HTTP flow (Nest + PostgreSQL Testcontainers)', (
       1, 2, 3,
     ]);
     expect(JSON.stringify(before.body.photos)).not.toContain('incoming/');
+    expect(before.body.photos.every(({ url }: { url: string }) => !url.includes(lotId))).toBe(true);
     for (const photo of before.body.photos) {
       expect(Object.keys(photo).sort()).toEqual(['id', 'position', 'url']);
       expect(photo).not.toHaveProperty('mediaRef');
       expect(photo).not.toHaveProperty('objectKey');
     }
+    expect(before.body).not.toHaveProperty('providerId');
+    expect(findCoordinateExposure(before.body, [{ latitude: 5.5, longitude: -73.4 }])).toEqual([]);
 
     const reversed = [...photos].reverse();
     await request(app.getHttpServer())
