@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../../../shared/infra/database.js';
 import type {
   ChangeRecord,
@@ -68,18 +68,18 @@ export class DrizzleSyncRepository implements SyncRepositoryPort {
 
   async appendBaselineIfAbsent(change: ChangeRecord): Promise<string | null> {
     await this.acquireSequenceLock();
-    if (await this.hasEntityHistory(change.entity, change.entityId)) return null;
-    return this.insertChange(change);
-  }
-
-  async hasEntityHistory(entity: string, entityId: string): Promise<boolean> {
-    const [row] = await this.database
-      .current()
-      .select({ serverSeq: changeLog.serverSeq })
-      .from(changeLog)
-      .where(and(eq(changeLog.entity, entity), eq(changeLog.entityId, entityId)))
-      .limit(1);
-    return row !== undefined;
+    const result = await this.database.current().execute(sql`
+      INSERT INTO sync.change_log (entity, entity_id, op, payload, owner_user_id, occurred_at)
+      SELECT ${change.entity}, ${change.entityId}::uuid, ${change.op}, ${JSON.stringify(change.payload)}::jsonb,
+             ${change.ownerUserId}::uuid, ${change.occurredAt}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM sync.change_log
+        WHERE entity = ${change.entity} AND entity_id = ${change.entityId}::uuid
+      )
+      RETURNING server_seq
+    `);
+    const inserted = result.rows[0] as { server_seq: string | bigint } | undefined;
+    return inserted ? String(inserted.server_seq) : null;
   }
 
   async pull(input: { userId: string; cursor: string; limit: number }) {

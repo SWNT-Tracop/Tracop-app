@@ -31,7 +31,6 @@ describe('SyncService', () => {
         return seq;
       },
       appendBaselineIfAbsent: async () => null,
-      hasEntityHistory: async () => false,
       pull: async ({ cursor }) => ({ changes: [], nextCursor: cursor, hasMore: false }),
     };
     const registry = new SyncOperationHandlerRegistry();

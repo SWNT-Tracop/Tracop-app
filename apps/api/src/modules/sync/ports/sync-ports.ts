@@ -44,7 +44,6 @@ export interface SyncRepositoryPort {
   saveProcessed(operation: ProcessedOperation): Promise<void>;
   appendChange(change: ChangeRecord): Promise<string>;
   appendBaselineIfAbsent(change: ChangeRecord): Promise<string | null>;
-  hasEntityHistory(entity: string, entityId: string): Promise<boolean>;
   pull(input: {
     readonly userId: string;
     readonly cursor: string;
