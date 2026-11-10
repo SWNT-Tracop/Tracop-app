@@ -273,6 +273,15 @@ export class DrizzleLotRepository implements LotRepository {
     return (rows.rows as { lot_id: string }[]).map(({ lot_id }) => lot_id);
   }
 
+  async findExpiredReservationOrderIds(now: Date, limit: number): Promise<readonly string[]> {
+    const rows = await this.database.current().execute(sql`
+      SELECT DISTINCT order_id FROM catalog.lot_reservations
+      WHERE status = 'active' AND expires_at < ${now}
+      ORDER BY order_id LIMIT ${limit}
+    `);
+    return (rows.rows as { order_id: string }[]).map(({ order_id }) => order_id);
+  }
+
   async reserveStock(input: {
     lotId: string;
     orderId: string;

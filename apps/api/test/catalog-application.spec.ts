@@ -128,6 +128,14 @@ describe('catalog application', () => {
         }
       return [...lotIds];
     },
+    findExpiredReservationOrderIds: async (now, limit) =>
+      [
+        ...new Set(
+          [...reservations.entries()]
+            .filter(([, item]) => item.status === 'active' && item.expiresAt < now)
+            .map(([, item]) => item.orderId),
+        ),
+      ].slice(0, limit),
   };
   const uow: CatalogUnitOfWork = { run: async (operation) => operation() };
   const eventWriter: CatalogEventWriter = {

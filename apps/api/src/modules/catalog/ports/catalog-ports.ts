@@ -41,6 +41,7 @@ export interface LotRepository {
     now: Date;
   }): Promise<'created' | 'exists'>;
   releaseOrderReservations(orderId: string, now: Date): Promise<readonly string[]>;
+  findExpiredReservationOrderIds(now: Date, limit: number): Promise<readonly string[]>;
 }
 export interface CatalogUnitOfWork {
   run<T>(operation: () => Promise<T>): Promise<T>;

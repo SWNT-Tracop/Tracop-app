@@ -348,6 +348,13 @@ export class CatalogService {
     });
   }
 
+  async findExpiredReservationOrderIds(
+    now = this.clock.now(),
+    limit = 100,
+  ): Promise<readonly string[]> {
+    return this.lots.findExpiredReservationOrderIds(now, limit);
+  }
+
   private async changeLotStatus(
     lot: LotProps,
     status: 'reserved' | 'published' | 'expired',
