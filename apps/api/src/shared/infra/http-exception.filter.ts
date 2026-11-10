@@ -19,6 +19,7 @@ const domainStatus: Record<string, number> = {
   forbidden: HttpStatus.FORBIDDEN,
   not_found: HttpStatus.NOT_FOUND,
   version_conflict: HttpStatus.CONFLICT,
+  lot_has_active_reservations: HttpStatus.CONFLICT,
   photo_limit: HttpStatus.CONFLICT,
   photo_not_pending: HttpStatus.CONFLICT,
   photo_order_invalid: HttpStatus.CONFLICT,

@@ -21,6 +21,10 @@ describe('catalog application', () => {
     ],
   ]);
   const lots = new Map<string, LotProps>();
+  const reservations = new Map<
+    string,
+    { lotId: string; orderId: string; quantityMilli: bigint; expiresAt: Date; status: string }
+  >();
   const emitted: Array<{ aggregate: string; type: string; payload: Record<string, unknown> }> = [];
   const categoryRepository: CategoryRepository = {
     findById: async (id) => categories.get(id) ?? null,
@@ -42,16 +46,35 @@ describe('catalog application', () => {
       lots.get(id)?.providerId === owner ? lots.get(id)! : null,
     findMine: async (owner) => [...lots.values()].filter((lot) => lot.providerId === owner),
     findVisible: async (now, bounds) =>
-      [...lots.values()].filter(
-        (lot) =>
-          lot.status === 'published' &&
-          lot.availableUntil >= now &&
-          (!bounds ||
-            (lot.locationLat >= bounds.minLat &&
-              lot.locationLat <= bounds.maxLat &&
-              lot.locationLng >= bounds.minLng &&
-              lot.locationLng <= bounds.maxLng)),
-      ),
+      [...lots.values()]
+        .filter(
+          (lot) =>
+            (lot.status === 'published' || lot.status === 'reserved') &&
+            lot.availableUntil >= now &&
+            lot.quantityMilli >
+              [...reservations.values()]
+                .filter(
+                  (item) =>
+                    item.lotId === lot.id && item.status === 'active' && item.expiresAt >= now,
+                )
+                .reduce((sum, item) => sum + item.quantityMilli, 0n) &&
+            (!bounds ||
+              (lot.locationLat >= bounds.minLat &&
+                lot.locationLat <= bounds.maxLat &&
+                lot.locationLng >= bounds.minLng &&
+                lot.locationLng <= bounds.maxLng)),
+        )
+        .map((lot) => ({
+          ...lot,
+          availableQuantityMilli:
+            lot.quantityMilli -
+            [...reservations.values()]
+              .filter(
+                (item) =>
+                  item.lotId === lot.id && item.status === 'active' && item.expiresAt >= now,
+              )
+              .reduce((sum, item) => sum + item.quantityMilli, 0n),
+        })),
     save: async (item) => {
       if (lots.has(item.id)) return 'exists';
       lots.set(item.id, item);
@@ -69,6 +92,41 @@ describe('catalog application', () => {
       if (lots.get(item.id)?.version !== expectedVersion) return false;
       lots.delete(item.id);
       return true;
+    },
+    lockForReservation: async (ids) => ids.flatMap((id) => lots.get(id) ?? []),
+    getAvailableQuantity: async (id, now) => {
+      const lot = lots.get(id);
+      return lot
+        ? lot.quantityMilli -
+            [...reservations.values()]
+              .filter(
+                (item) => item.lotId === id && item.status === 'active' && item.expiresAt >= now,
+              )
+              .reduce((sum, item) => sum + item.quantityMilli, 0n)
+        : 0n;
+    },
+    findOrderReservationLotIds: async (orderId) =>
+      [
+        ...new Set(
+          [...reservations.values()]
+            .filter((item) => item.orderId === orderId && item.status === 'active')
+            .map((item) => item.lotId),
+        ),
+      ].sort(),
+    reserveStock: async (input) => {
+      const key = `${input.lotId}:${input.orderId}`;
+      if (reservations.has(key)) return 'exists';
+      reservations.set(key, { ...input, status: 'active' });
+      return 'created';
+    },
+    releaseOrderReservations: async (orderId) => {
+      const lotIds = new Set<string>();
+      for (const reservation of reservations.values())
+        if (reservation.orderId === orderId && reservation.status === 'active') {
+          reservation.status = 'released';
+          lotIds.add(reservation.lotId);
+        }
+      return [...lotIds];
     },
   };
   const uow: CatalogUnitOfWork = { run: async (operation) => operation() };
@@ -113,6 +171,7 @@ describe('catalog application', () => {
 
   beforeEach(() => {
     lots.clear();
+    reservations.clear();
     categories.clear();
     emitted.length = 0;
   });

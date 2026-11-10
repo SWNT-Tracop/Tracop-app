@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, gte, isNull, lte, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, lt, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../../../shared/infra/database.js';
 import { APP_CLOCK, OUTBOX_WRITER, UNIT_OF_WORK } from '../../../../shared/infra/tokens.js';
 import type { Clock } from '../../../../shared/kernel/clock.js';
@@ -17,6 +17,7 @@ import type {
   ProductRepository,
 } from '../../ports/catalog-ports.js';
 import { categories, lots, products } from './drizzle-schema.js';
+import { createId } from '../../../../shared/kernel/ids.js';
 
 const normalizeSearchText = (value: string): string =>
   value
@@ -196,9 +197,9 @@ export class DrizzleLotRepository implements LotRepository {
   async findVisible(
     now: Date,
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number },
-  ): Promise<readonly LotProps[]> {
+  ): Promise<readonly (LotProps & { readonly availableQuantityMilli: bigint })[]> {
     const predicates = [
-      eq(lots.status, 'published'),
+      inArray(lots.status, ['published', 'reserved']),
       gte(lots.availableUntil, now),
       isNull(lots.deletedAt),
     ];
@@ -209,14 +210,94 @@ export class DrizzleLotRepository implements LotRepository {
         gte(lots.locationLng, bounds.minLng),
         lte(lots.locationLng, bounds.maxLng),
       );
-    return (
-      await this.database
-        .current()
-        .select()
-        .from(lots)
-        .where(and(...predicates))
-        .orderBy(asc(lots.availableFrom), asc(lots.id))
-    ).map(toLot);
+    const rows = await this.database
+      .current()
+      .select({
+        lot: lots,
+        availableMilli: sql<string>`((${lots.quantity} * 1000 - COALESCE((
+          SELECT SUM(r.quantity_milli)
+          FROM catalog.lot_reservations r
+          WHERE r.lot_id = ${lots.id}
+            AND r.status = 'active'
+            AND r.expires_at >= ${now}
+        ), 0))::bigint)::text`,
+      })
+      .from(lots)
+      .where(
+        and(
+          ...predicates,
+          sql`${lots.quantity} * 1000 > COALESCE((SELECT SUM(r.quantity_milli)
+            FROM catalog.lot_reservations r
+            WHERE r.lot_id = ${lots.id}
+              AND r.status = 'active'
+              AND r.expires_at >= ${now}), 0)`,
+        ),
+      )
+      .orderBy(asc(lots.availableFrom), asc(lots.id));
+    return rows.map(({ lot, availableMilli }) => ({
+      ...toLot(lot),
+      availableQuantityMilli: BigInt(availableMilli),
+    }));
+  }
+
+  async lockForReservation(lotIds: readonly string[]): Promise<readonly LotProps[]> {
+    if (!lotIds.length) return [];
+    const rows = await this.database
+      .current()
+      .select()
+      .from(lots)
+      .where(and(inArray(lots.id, [...lotIds]), isNull(lots.deletedAt)))
+      .orderBy(asc(lots.id))
+      .for('update');
+    return rows.map(toLot);
+  }
+
+  async getAvailableQuantity(lotId: string, now: Date): Promise<bigint> {
+    const result = await this.database.current().execute(sql`
+      SELECT GREATEST(0::numeric, l.quantity * 1000 - COALESCE(SUM(r.quantity_milli) FILTER (
+        WHERE r.status = 'active' AND r.expires_at >= ${now}
+      ), 0))::bigint::text AS available_milli
+      FROM catalog.lots l LEFT JOIN catalog.lot_reservations r ON r.lot_id = l.id
+      WHERE l.id = ${lotId}::uuid AND l.deleted_at IS NULL
+      GROUP BY l.id
+    `);
+    const [row] = result.rows as { available_milli: string }[];
+    return row ? BigInt(row.available_milli) : 0n;
+  }
+
+  async findOrderReservationLotIds(orderId: string): Promise<readonly string[]> {
+    const rows = await this.database.current().execute(sql`
+      SELECT DISTINCT lot_id FROM catalog.lot_reservations
+      WHERE order_id = ${orderId}::uuid AND status = 'active' ORDER BY lot_id
+    `);
+    return (rows.rows as { lot_id: string }[]).map(({ lot_id }) => lot_id);
+  }
+
+  async reserveStock(input: {
+    lotId: string;
+    orderId: string;
+    quantityMilli: bigint;
+    expiresAt: Date;
+    now: Date;
+  }): Promise<'created' | 'exists'> {
+    const result = await this.database.current().execute(sql`
+      INSERT INTO catalog.lot_reservations
+        (id, lot_id, order_id, quantity_milli, status, expires_at, created_at, updated_at)
+      VALUES (${createId()}::uuid, ${input.lotId}::uuid, ${input.orderId}::uuid,
+        ${input.quantityMilli.toString()}::numeric, 'active', ${input.expiresAt}, ${input.now}, ${input.now})
+      ON CONFLICT (lot_id, order_id) WHERE status = 'active' DO NOTHING
+      RETURNING id
+    `);
+    return result.rows.length ? 'created' : 'exists';
+  }
+
+  async releaseOrderReservations(orderId: string, now: Date): Promise<readonly string[]> {
+    const rows = await this.database.current().execute(sql`
+      UPDATE catalog.lot_reservations SET status = 'released', updated_at = ${now}
+      WHERE order_id = ${orderId}::uuid AND status = 'active'
+      RETURNING lot_id
+    `);
+    return [...new Set((rows.rows as { lot_id: string }[]).map(({ lot_id }) => lot_id))].sort();
   }
   async save(lot: LotProps): Promise<'created' | 'exists'> {
     const now = this.clock.now();
@@ -271,7 +352,13 @@ export class DrizzleLotRepository implements LotRepository {
         .select()
         .from(lots)
         .where(
-          and(eq(lots.status, 'published'), lt(lots.availableUntil, now), isNull(lots.deletedAt)),
+          and(
+            inArray(lots.status, ['published', 'reserved']),
+            lt(lots.availableUntil, now),
+            isNull(lots.deletedAt),
+            sql`NOT EXISTS (SELECT 1 FROM catalog.lot_reservations r
+              WHERE r.lot_id = ${lots.id} AND r.status = 'active' AND r.expires_at >= ${now})`,
+          ),
         )
         .limit(limit)
     ).map(toLot);

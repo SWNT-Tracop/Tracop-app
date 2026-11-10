@@ -29,6 +29,12 @@ import { LOT_PHOTO_REPOSITORY, type LotPhotoRepository } from '../ports/lot-phot
 export interface CatalogSettings {
   readonly lotHorizonDays: number;
 }
+export type LotQuoteSnapshot = Pick<
+  LotProps,
+  'id' | 'providerId' | 'unit' | 'unitPrice' | 'availableUntil' | 'status'
+> & {
+  readonly availableQuantityMilli: bigint;
+};
 export const CATALOG_SETTINGS = Symbol('CATALOG_SETTINGS');
 const STAFF = ['operator', 'admin'] as const;
 const PROVIDERS = ['producer', 'supplier'] as const;
@@ -149,12 +155,21 @@ export class CatalogService {
   ): Promise<LotProps> {
     this.requireRole(actor, PROVIDERS);
     return this.uow.run(async () => {
-      const current = await this.lots.findByIdForOwner(id, actor.sub);
+      const [locked] = await this.lots.lockForReservation([id]);
+      const current = locked?.providerId === actor.sub ? locked : null;
       if (!current) throw new DomainError('Lote no encontrado.', 'not_found');
       if (current.version !== expectedVersion)
         throw new DomainError('Conflicto de versión.', 'version_conflict');
-      if (current.status !== 'draft')
-        throw new DomainError('Solo se edita un lote en borrador.', 'invalid_transition');
+      const isActiveLot = current.status === 'published' || current.status === 'reserved';
+      if (
+        current.status !== 'draft' &&
+        (!isActiveLot ||
+          Object.keys(patch).some((key) => !['quantityMilli', 'unitPrice'].includes(key)))
+      )
+        throw new DomainError(
+          'En un lote publicado solo se puede ajustar cantidad o precio.',
+          'invalid_transition',
+        );
       const product = await this.products.findById(patch.productId ?? current.productId);
       if (!product) throw new DomainError('Producto no encontrado.', 'not_found');
       const validated = Lot.create(
@@ -178,7 +193,14 @@ export class CatalogService {
         this.clock.now(),
         this.settings.lotHorizonDays,
       ).props;
-      const next = { ...validated, version: current.version + 1 };
+      const availableBefore = await this.lots.getAvailableQuantity(id, this.clock.now());
+      const reservedMilli = current.quantityMilli - availableBefore;
+      if (validated.quantityMilli < reservedMilli)
+        throw new DomainError(
+          'La cantidad no puede ser menor a las reservas activas.',
+          'lot_has_active_reservations',
+        );
+      const next = { ...validated, status: current.status, version: current.version + 1 };
       if (!(await this.lots.update(next, expectedVersion)))
         throw new DomainError('Conflicto de versión.', 'version_conflict');
       await this.recordLot(next);
@@ -189,7 +211,8 @@ export class CatalogService {
   async deleteLot(actor: Actor, id: string, expectedVersion: number): Promise<LotProps> {
     this.requireRole(actor, PROVIDERS);
     return this.uow.run(async () => {
-      const current = await this.lots.findByIdForOwner(id, actor.sub);
+      const [locked] = await this.lots.lockForReservation([id]);
+      const current = locked?.providerId === actor.sub ? locked : null;
       if (!current) throw new DomainError('Lote no encontrado.', 'not_found');
       if (current.version !== expectedVersion)
         throw new DomainError('Conflicto de versión.', 'version_conflict');
@@ -262,19 +285,105 @@ export class CatalogService {
     return this.transitionOwnedLot(actor, id, expectedVersion, 'cancelled');
   }
 
+  async getLotQuote(lotId: string): Promise<LotQuoteSnapshot> {
+    const lot = await this.lots.findById(lotId);
+    if (!lot) throw new DomainError('Lote no encontrado.', 'not_found');
+    return {
+      ...lot,
+      availableQuantityMilli: await this.lots.getAvailableQuantity(lotId, this.clock.now()),
+    };
+  }
+
+  async reserveLots(input: {
+    readonly orderId: string;
+    readonly lines: readonly { readonly lotId: string; readonly quantityMilli: bigint }[];
+    readonly expiresAt: Date;
+  }): Promise<void> {
+    await this.uow.run(async () => {
+      const now = this.clock.now();
+      const lockedLots = await this.lots.lockForReservation(input.lines.map(({ lotId }) => lotId));
+      const byId = new Map(lockedLots.map((lot) => [lot.id, lot]));
+      if (byId.size !== input.lines.length)
+        throw new DomainError('Lote no disponible.', 'lot_unavailable');
+      for (const line of [...input.lines].sort((a, b) => a.lotId.localeCompare(b.lotId))) {
+        const lot = byId.get(line.lotId)!;
+        if (!['published', 'reserved'].includes(lot.status) || lot.availableUntil < now)
+          throw new DomainError('Lote no disponible o vencido.', 'lot_unavailable');
+        if (
+          line.quantityMilli <= 0n ||
+          (await this.lots.getAvailableQuantity(lot.id, now)) < line.quantityMilli
+        )
+          throw new DomainError('No hay disponibilidad suficiente.', 'insufficient_stock');
+      }
+      for (const line of [...input.lines].sort((a, b) => a.lotId.localeCompare(b.lotId))) {
+        const lot = byId.get(line.lotId)!;
+        if (
+          (await this.lots.reserveStock({
+            ...line,
+            orderId: input.orderId,
+            expiresAt: input.expiresAt,
+            now,
+          })) !== 'created'
+        )
+          throw new DomainError('La reserva ya existe.', 'reservation_conflict');
+        const available = await this.lots.getAvailableQuantity(lot.id, now);
+        if (available === 0n && lot.status !== 'reserved')
+          await this.changeLotStatus(lot, 'reserved', now);
+      }
+    });
+  }
+
+  async releaseOrderReservations(orderId: string): Promise<void> {
+    await this.uow.run(async () => {
+      const now = this.clock.now();
+      const lotIds = await this.lots.findOrderReservationLotIds(orderId);
+      const lockedLots = await this.lots.lockForReservation(lotIds);
+      await this.lots.releaseOrderReservations(orderId, now);
+      for (const lot of lockedLots) {
+        if (lot.status !== 'reserved') continue;
+        const available = await this.lots.getAvailableQuantity(lot.id, now);
+        if (available > 0n)
+          await this.changeLotStatus(lot, lot.availableUntil < now ? 'expired' : 'published', now);
+      }
+    });
+  }
+
+  private async changeLotStatus(
+    lot: LotProps,
+    status: 'reserved' | 'published' | 'expired',
+    now: Date,
+  ): Promise<void> {
+    const entity = Lot.reconstitute(lot);
+    entity.transition(status, now);
+    const next = entity.props;
+    if (!(await this.lots.update(next, lot.version)))
+      throw new DomainError('Conflicto de versión.', 'version_conflict');
+    await this.events.append(entity.drainEvents().map((event) => this.eventInput(event)));
+    await this.recordLot(next);
+  }
+
   async expireLots(limit = 100): Promise<number> {
     const expired = await this.lots.findExpired(this.clock.now(), limit);
+    let count = 0;
     for (const item of expired) {
-      const lot = Lot.reconstitute(item);
-      lot.transition('expired', this.clock.now());
-      await this.uow.run(async () => {
-        if (await this.lots.update(lot.props, item.version)) {
-          await this.events.append(lot.drainEvents().map((event) => this.eventInput(event)));
-          await this.recordLot(lot.props);
-        }
+      const didExpire = await this.uow.run(async () => {
+        const [current] = await this.lots.lockForReservation([item.id]);
+        if (!current || current.availableUntil >= this.clock.now()) return false;
+        if (
+          (await this.lots.getAvailableQuantity(current.id, this.clock.now())) <
+          current.quantityMilli
+        )
+          return false;
+        const lot = Lot.reconstitute(current);
+        lot.transition('expired', this.clock.now());
+        if (!(await this.lots.update(lot.props, current.version))) return false;
+        await this.events.append(lot.drainEvents().map((event) => this.eventInput(event)));
+        await this.recordLot(lot.props);
+        return true;
       });
+      if (didExpire) count += 1;
     }
-    return expired.length;
+    return count;
   }
 
   async getMyLots(actor: Actor): Promise<readonly LotProps[]> {
@@ -395,7 +504,11 @@ export class CatalogService {
     const own = await this.lots.findByIdForOwner(id, actor.sub);
     if (own) return own;
     const lot = await this.lots.findById(id);
-    if (!lot || !Lot.isVisibleNow(lot, this.clock.now()))
+    if (
+      !lot ||
+      !Lot.isVisibleNow(lot, this.clock.now()) ||
+      (await this.lots.getAvailableQuantity(id, this.clock.now())) <= 0n
+    )
       throw new DomainError('Lote no encontrado.', 'not_found');
     return lot;
   }
@@ -424,10 +537,16 @@ export class CatalogService {
     status: 'published' | 'cancelled',
   ): Promise<LotProps> {
     return this.uow.run(async () => {
-      const current = await this.lots.findByIdForOwner(id, actor.sub);
+      const [locked] = await this.lots.lockForReservation([id]);
+      const current = locked?.providerId === actor.sub ? locked : null;
       if (!current) throw new DomainError('Lote no encontrado.', 'not_found');
       if (current.version !== expectedVersion)
         throw new DomainError('Conflicto de versión.', 'version_conflict');
+      if (
+        status === 'cancelled' &&
+        (await this.lots.getAvailableQuantity(id, this.clock.now())) < current.quantityMilli
+      )
+        throw new DomainError('El lote tiene reservas activas.', 'lot_has_active_reservations');
       const lot = Lot.reconstitute(current);
       if (status === 'published') {
         const provider = await this.providers.getProviderPublicSummaries([actor.sub]);

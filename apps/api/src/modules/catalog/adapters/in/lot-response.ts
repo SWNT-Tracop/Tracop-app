@@ -2,7 +2,7 @@ import type { LotProps } from '../../domain/lot.js';
 import type { ProviderPublicSummary } from '../../ports/catalog-ports.js';
 
 export const serializeLotForViewer = (
-  lot: LotProps,
+  lot: LotProps & { readonly availableQuantityMilli?: bigint },
   provider: ProviderPublicSummary,
   viewerId: string,
   distanceKm?: number,
@@ -11,6 +11,7 @@ export const serializeLotForViewer = (
   return {
     ...publicFields,
     quantityMilli: lot.quantityMilli.toString(),
+    availableQuantityMilli: (lot.availableQuantityMilli ?? lot.quantityMilli).toString(),
     ...(viewerId === providerId ? { providerId } : {}),
     unitPrice: lot.unitPrice.toString(),
     provider,

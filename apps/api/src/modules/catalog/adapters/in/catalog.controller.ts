@@ -321,7 +321,7 @@ export class LotsController {
     return {
       items: await Promise.all(
         page.items.map(({ lot, distanceKm }) =>
-          this.toResponse(lot, req.identity!.sub, distanceKm),
+          this.toResponse(lot, req.identity!.sub, distanceKm, false, lot.availableQuantityMilli),
         ),
       ),
       ...(page.nextCursor ? { nextCursor: this.encodeCursor(page.nextCursor) } : {}),
@@ -538,7 +538,15 @@ export class LotsController {
     viewerId: string,
     distanceKm?: number,
     includeAllPhotos = false,
+    availableOverride?: bigint,
   ) {
+    const availableQuantityMilli =
+      availableOverride ??
+      (await this.catalog.getLotQuote(lot.id).then((quote) => quote.availableQuantityMilli));
+    const lotWithAvailability = {
+      ...lot,
+      ...(availableQuantityMilli !== undefined ? { availableQuantityMilli } : {}),
+    };
     const [provider] = await this.providers
       .getProviderPublicSummaries([lot.providerId])
       .then((map) => [map.get(lot.providerId)]);
@@ -549,7 +557,7 @@ export class LotsController {
       includeAllPhotos ? new Set([lot.id]) : new Set(),
     );
     return {
-      ...serializeLotForViewer(lot, provider, viewerId, distanceKm),
+      ...serializeLotForViewer(lotWithAvailability, provider, viewerId, distanceKm),
       photos: photos.get(lot.id) ?? [],
     };
   }

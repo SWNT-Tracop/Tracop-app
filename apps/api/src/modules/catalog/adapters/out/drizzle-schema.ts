@@ -123,3 +123,29 @@ export const lotPhotos = catalog.table(
     ),
   ],
 );
+
+export const lotReservations = catalog.table(
+  'lot_reservations',
+  {
+    id: uuid('id').primaryKey(),
+    lotId: uuid('lot_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    quantityMilli: numeric('quantity_milli', { precision: 12, scale: 3 }).notNull(),
+    status: text('status').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('lot_reservations_lot_status_expiry_idx').on(table.lotId, table.status, table.expiresAt),
+    index('lot_reservations_order_status_idx').on(table.orderId, table.status),
+    uniqueIndex('lot_reservations_active_order_lot_unique')
+      .on(table.lotId, table.orderId)
+      .where(sql`${table.status} = 'active'`),
+    check('lot_reservations_quantity_positive_check', sql`${table.quantityMilli} > 0`),
+    check(
+      'lot_reservations_status_check',
+      sql`${table.status} IN ('active','released','consumed')`,
+    ),
+  ],
+);

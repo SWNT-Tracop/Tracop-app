@@ -33,7 +33,7 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
 
   const resetTables = async () => {
     await pool.query(`TRUNCATE sync.processed_operations, sync.change_log,
-      catalog.lot_photos, catalog.lots, catalog.products, catalog.categories,
+      catalog.lot_reservations, catalog.lot_photos, catalog.lots, catalog.products, catalog.categories,
       identity.provider_profiles, identity.consents, identity.otp_codes, identity.sessions,
       identity.devices, identity.channel_links, identity.users, shared.outbox_events CASCADE`);
   };
@@ -911,15 +911,52 @@ describePostgres('catalog repositories and use cases (shared PostgreSQL Testcont
   it('prints the query plan for the primary visible-lots PostgreSQL query', async () => {
     await createLot();
     const plan = await pool.query<{ 'QUERY PLAN': string }>(
-      `EXPLAIN (COSTS OFF) SELECT id, product_id, provider_id, unit_price, available_from, available_until,
-       location_lat, location_lng FROM catalog.lots
-       WHERE status = 'published' AND available_until >= $1 AND deleted_at IS NULL
-       AND location_lat BETWEEN $2 AND $3 AND location_lng BETWEEN $4 AND $5
-       ORDER BY available_from, id LIMIT 21`,
+      `EXPLAIN (COSTS OFF) SELECT l.id, l.product_id, l.provider_id, l.unit_price, l.available_from, l.available_until,
+       l.location_lat, l.location_lng,
+       ((l.quantity * 1000 - COALESCE((SELECT SUM(r.quantity_milli) FROM catalog.lot_reservations r
+         WHERE r.lot_id = l.id AND r.status = 'active' AND r.expires_at >= $1), 0)) * 1000) AS available_milli
+       FROM catalog.lots l
+       WHERE l.status IN ('published', 'reserved') AND l.available_until >= $1 AND l.deleted_at IS NULL
+       AND l.quantity * 1000 > COALESCE((SELECT SUM(r.quantity_milli) FROM catalog.lot_reservations r
+         WHERE r.lot_id = l.id AND r.status = 'active' AND r.expires_at >= $1), 0)
+       AND l.location_lat BETWEEN $2 AND $3 AND l.location_lng BETWEEN $4 AND $5
+       ORDER BY l.available_from, l.id LIMIT 21`,
       [now, 5.4, 5.6, -73.5, -73.3],
     );
     const output = plan.rows.map((row) => row['QUERY PLAN']).join('\n');
     process.stdout.write(`\nCatalog visible-lots EXPLAIN:\n${output}\n`);
     expect(output).toMatch(/(Seq Scan|Index Scan|Bitmap Heap Scan)/);
+    expect(output).toContain('lot_reservations');
+  });
+
+  it('reserves under lot lock and materializes published/reserved transitions with recorder', async () => {
+    const lot = await createLot();
+    const orderId = createId();
+    const exp = new Date(now.getTime() + 60_000);
+    await catalog.reserveLots({
+      orderId,
+      lines: [{ lotId: lot.id, quantityMilli: 9_000n }],
+      expiresAt: exp,
+    });
+    expect((await catalog.getLotQuote(lot.id)).availableQuantityMilli).toBe(1_000n);
+    expect(
+      (await pool.query('SELECT status, version FROM catalog.lots WHERE id = $1', [lot.id]))
+        .rows[0],
+    ).toMatchObject({ status: 'published', version: 2 });
+    const otherOrderId = createId();
+    await catalog.reserveLots({
+      orderId: otherOrderId,
+      lines: [{ lotId: lot.id, quantityMilli: 1_000n }],
+      expiresAt: exp,
+    });
+    expect(
+      (await pool.query('SELECT status, version FROM catalog.lots WHERE id = $1', [lot.id]))
+        .rows[0],
+    ).toMatchObject({ status: 'reserved', version: 3 });
+    await catalog.releaseOrderReservations(otherOrderId);
+    expect(
+      (await pool.query('SELECT status, version FROM catalog.lots WHERE id = $1', [lot.id]))
+        .rows[0],
+    ).toMatchObject({ status: 'published', version: 4 });
   });
 });
