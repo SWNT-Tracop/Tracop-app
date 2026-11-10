@@ -75,6 +75,20 @@ const envSchema = z.object({
   SYNC_PUSH_RATE_LIMIT: z.coerce.number().int().positive().default(30),
   SYNC_PULL_RATE_LIMIT: z.coerce.number().int().positive().default(120),
   SYNC_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  ORDER_MAX_LINES: z.coerce.number().int().positive().max(20).default(20),
+  ORDER_QUOTE_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  ORDER_RESERVATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  ORDER_SUBTOTAL_ROUNDING: z.enum(['half_up', 'floor', 'ceil']).default('half_up'),
+  ORDER_COMMISSION_RATE_BPS: z.coerce.number().int().min(0).max(10_000).default(0),
+  ORDER_FREIGHT_COP: z
+    .string()
+    .regex(/^(0|[1-9]\d{0,18})$/)
+    .default('0')
+    .transform(BigInt),
+  ORDER_RATE_LIMIT: z.coerce.number().int().positive().default(60),
+  ORDER_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  ORDER_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(2_000),
+  ORDER_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   S3_ENDPOINT: optionalText(z.string().url()),
   S3_PUBLIC_ENDPOINT: optionalText(z.string().url()),
   S3_BUCKET: optionalText(z.string().min(3).max(63)),
