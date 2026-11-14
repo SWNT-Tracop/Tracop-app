@@ -1,21 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gt, gte, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../../../shared/infra/database.js';
-import type {
-  LotQuotePort,
-  LotQuoteSnapshot,
-  LotReservationPort,
-  OrderAggregate,
-  OrderRepository,
-  PricingPort,
-} from '../../ports/ordering-ports.js';
+import type { OrderAggregate, OrderRepository, PricingPort } from '../../ports/ordering-ports.js';
 import type { OrderEvent, OrderLineProps, OrderProps } from '../../domain/order.js';
 import type { PricingConfiguration, QuoteAmounts } from '../../domain/pricing.js';
 import type { QuoteProps } from '../../domain/quote.js';
 import { createId } from '../../../../shared/kernel/ids.js';
 import { orders, orderLines, quotes, orderEvents } from './drizzle-schema.js';
-import { lotReservations } from '../../../catalog/adapters/out/drizzle-schema.js';
-import { lots } from '../../../catalog/adapters/out/drizzle-schema.js';
 import { calculateQuoteAmounts } from '../../domain/pricing.js';
 
 const toOrderProps = (row: typeof orders.$inferSelect): OrderProps => ({
@@ -234,94 +225,6 @@ export class DrizzleOrderRepository implements OrderRepository {
 }
 
 @Injectable()
-export class DrizzleLotQuotePort implements LotQuotePort {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
-
-  async getQuote(lotId: string): Promise<LotQuoteSnapshot> {
-    const db = this.database.current();
-    const [lot] = await db
-      .select({
-        id: lots.id,
-        providerId: lots.providerId,
-        unit: lots.unit,
-        unitPrice: lots.unitPrice,
-        availableUntil: lots.availableUntil,
-        status: lots.status,
-        quantity: lots.quantity,
-      })
-      .from(lots)
-      .where(and(eq(lots.id, lotId), isNull(lots.deletedAt)))
-      .limit(1);
-    if (!lot) throw new Error('Lot not found');
-    const [reserved] = await db
-      .select({ total: sql<string>`COALESCE(SUM(${lotReservations.quantityMilli}), 0)` })
-      .from(lotReservations)
-      .where(
-        and(
-          eq(lotReservations.lotId, lotId),
-          eq(lotReservations.status, 'active'),
-          gte(lotReservations.expiresAt, new Date()),
-        ),
-      );
-    const reservedMilli = BigInt(reserved?.total ?? '0');
-    const availableMilli = BigInt(lot.quantity) * 1000n - reservedMilli;
-    return {
-      id: lot.id,
-      providerId: lot.providerId,
-      unit: lot.unit,
-      unitPrice: BigInt(lot.unitPrice),
-      availableUntil: lot.availableUntil,
-      status: lot.status,
-      availableQuantityMilli: availableMilli > 0n ? availableMilli : 0n,
-    };
-  }
-}
-
-@Injectable()
-export class DrizzleLotReservationPort implements LotReservationPort {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
-
-  async reserve(
-    orderId: string,
-    lines: readonly { lotId: string; quantityMilli: bigint }[],
-    expiresAt: Date,
-  ): Promise<void> {
-    const db = this.database.current();
-    const now = new Date();
-    for (const line of lines) {
-      await db.insert(lotReservations).values({
-        id: createId(),
-        lotId: line.lotId,
-        orderId,
-        quantityMilli: line.quantityMilli.toString(),
-        status: 'active',
-        expiresAt,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-  }
-
-  async release(orderId: string): Promise<void> {
-    const db = this.database.current();
-    await db
-      .update(lotReservations)
-      .set({ status: 'released', updatedAt: new Date() })
-      .where(and(eq(lotReservations.orderId, orderId), eq(lotReservations.status, 'active')));
-  }
-
-  async findExpiredOrderIds(now: Date, limit: number): Promise<readonly string[]> {
-    const db = this.database.current();
-    const rows = await db
-      .selectDistinct({ orderId: lotReservations.orderId })
-      .from(lotReservations)
-      .where(and(eq(lotReservations.status, 'active'), lt(lotReservations.expiresAt, now)))
-      .limit(limit);
-    return rows.map((r) => r.orderId);
-  }
-}
-
-@Injectable()
 export class EnvPricingPort implements PricingPort {
   readonly configuration: PricingConfiguration;
   constructor(
@@ -337,8 +240,10 @@ export class EnvPricingPort implements PricingPort {
   }
 }
 
+import { PRICING_PORT } from '../../ports/ordering-ports.js';
+
 export const envPricingPortProvider = {
-  provide: 'PRICING_PORT',
+  provide: PRICING_PORT,
   useFactory: (
     commissionRateBps: bigint,
     freightCop: bigint,
