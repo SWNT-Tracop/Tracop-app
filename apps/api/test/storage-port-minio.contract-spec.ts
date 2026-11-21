@@ -41,6 +41,8 @@ describeMinio('S3StorageAdapter with MinIO Testcontainers', () => {
       S3_REGION: 'us-east-1',
       S3_API_ACCESS_KEY: container.getUsername(),
       S3_API_SECRET_KEY: container.getPassword(),
+      S3_POLICY_ACCESS_KEY: container.getUsername(),
+      S3_POLICY_SECRET_KEY: container.getPassword(),
     };
     storage = new S3StorageAdapter(env);
   }, 120_000);

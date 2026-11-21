@@ -51,6 +51,7 @@ export interface OrderRepository {
     limit: number,
   ): Promise<{ items: readonly OrderAggregate[]; nextCursor?: string }>;
   findExpiredQuoteIds(now: Date, limit: number): Promise<readonly string[]>;
+  listByStatus?(status: OrderProps['status'], limit: number): Promise<readonly OrderAggregate[]>;
 }
 
 export interface OrderingUnitOfWork {

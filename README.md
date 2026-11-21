@@ -215,4 +215,5 @@ El workflow ejecuta `pnpm test` antes del escaneo para generar los reportes LCOV
 - [Glosario](docs/GLOSSARY.md)
 - [ADR-008: autenticación por teléfono + OTP](docs/adr/ADR-008.md)
 - [ADR-009: mensajería con Telegram](docs/adr/ADR-009.md)
+- [ADR-013: logística sin coordenadas y check-ins offline](docs/adr/ADR-013.md)
 - [Aviso de privacidad (texto pendiente)](docs/PRIVACY_NOTICE.md)

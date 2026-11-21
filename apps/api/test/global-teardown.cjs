@@ -11,7 +11,7 @@ module.exports = async () => {
   try {
     const state = JSON.parse(await readFile(statePath, 'utf8'));
     if (state.containerId) {
-      const result = spawnSync('docker', ['--context', 'default', 'rm', '-f', state.containerId], {
+      const result = spawnSync('docker', ['rm', '-f', state.containerId], {
         stdio: 'ignore',
       });
       if (result.status !== 0)

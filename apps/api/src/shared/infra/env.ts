@@ -1,6 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadEnvFile } from 'node:process';
+import { parseEnv } from 'node:util';
 import { z } from 'zod';
 
 const booleanFromString = z.enum(['true', 'false']).transform((value) => value === 'true');
@@ -170,9 +170,10 @@ export type AppEnvironment = z.infer<typeof envSchema> & {
 
 export const loadAppEnvironment = (cwd = process.cwd()): AppEnvironment => {
   const rootEnvPath = resolve(cwd, '../../.env');
-  if (existsSync(rootEnvPath)) loadEnvFile(rootEnvPath);
-
-  const parsed = parsedEnvironmentSchema.parse(process.env);
+  const fileEnvironment = existsSync(rootEnvPath)
+    ? parseEnv(readFileSync(rootEnvPath, 'utf8'))
+    : {};
+  const parsed = parsedEnvironmentSchema.parse({ ...fileEnvironment, ...process.env });
   if (parsed.NODE_ENV === 'production' && !parsed.TELEGRAM_BOT_USERNAME) {
     throw new Error('TELEGRAM_BOT_USERNAME is required in production.');
   }

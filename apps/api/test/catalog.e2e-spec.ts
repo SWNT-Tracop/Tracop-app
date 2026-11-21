@@ -170,6 +170,32 @@ describePostgres('catalog HTTP flow (Nest + PostgreSQL Testcontainers)', () => {
       })
       .expect(201);
 
+    await request(app.getHttpServer())
+      .post('/catalog/products')
+      .set(actor(buyer.token))
+      .send({
+        id: createId(),
+        categoryId: childId,
+        name: 'Producto no autorizado',
+        unit: 'kg',
+        attributes: {},
+      })
+      .expect(403);
+
+    const producerProductId = createId();
+    const producerProduct = await request(app.getHttpServer())
+      .post('/catalog/products')
+      .set(actor(producer.token))
+      .send({
+        id: producerProductId,
+        categoryId: childId,
+        name: 'Mora del productor',
+        unit: 'kg',
+        attributes: { organic: true },
+      })
+      .expect(201);
+    expect(producerProduct.body.id).toBe(producerProductId);
+
     const profile = await request(app.getHttpServer())
       .put('/me/provider-profile')
       .set(actor(producer.token))

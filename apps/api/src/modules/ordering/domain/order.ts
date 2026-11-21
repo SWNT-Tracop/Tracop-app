@@ -41,7 +41,14 @@ export interface OrderProps {
 }
 
 export type OrderEvent = {
-  readonly type: 'OrderRequested' | 'OrderQuoted' | 'OrderAccepted' | 'OrderCancelled';
+  readonly type:
+    | 'OrderRequested'
+    | 'OrderQuoted'
+    | 'OrderAccepted'
+    | 'OrderCancelled'
+    | 'OrderPickupScheduled'
+    | 'OrderInTransit'
+    | 'OrderDelivered';
   readonly orderId: string;
   readonly occurredAt: string;
   readonly payload: Record<string, unknown>;
@@ -105,16 +112,10 @@ export class Order {
     if (next === 'cancelled')
       (this.props as { cancelReason: string | null }).cancelReason =
         typeof details.reason === 'string' ? details.reason : 'buyer_cancelled';
-    if (next === 'requested' || next === 'quoted' || next === 'accepted' || next === 'cancelled')
+    const eventType = eventTypeFor(next);
+    if (eventType)
       this.pendingEvents.push({
-        type:
-          next === 'requested'
-            ? 'OrderRequested'
-            : next === 'quoted'
-              ? 'OrderQuoted'
-              : next === 'accepted'
-                ? 'OrderAccepted'
-                : 'OrderCancelled',
+        type: eventType,
         orderId: this.props.id,
         occurredAt: occurredAt.toISOString(),
         payload: { status: next, ...details },
@@ -125,3 +126,20 @@ export class Order {
     return this.pendingEvents.splice(0);
   }
 }
+
+const eventTypeFor = (status: OrderStatus): OrderEvent['type'] | null =>
+  status === 'requested'
+    ? 'OrderRequested'
+    : status === 'quoted'
+      ? 'OrderQuoted'
+      : status === 'accepted'
+        ? 'OrderAccepted'
+        : status === 'cancelled'
+          ? 'OrderCancelled'
+          : status === 'pickup_scheduled'
+            ? 'OrderPickupScheduled'
+            : status === 'in_transit'
+              ? 'OrderInTransit'
+              : status === 'delivered'
+                ? 'OrderDelivered'
+                : null;

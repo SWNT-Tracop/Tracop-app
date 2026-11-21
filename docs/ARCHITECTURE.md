@@ -26,9 +26,9 @@ La decisión del núcleo de catálogo está en [ADR-010](adr/ADR-010.md).
 
 ## Sync
 
-`sync` expone `POST /sync/push` y `GET /sync/pull`, ambos autenticados. Push valida hasta 50 operaciones, las procesa en el orden recibido y devuelve un resultado individual `applied`, `rejected` o `conflict`. Pull usa un cursor numérico `server_seq` opaco para el cliente y devuelve los cambios visibles para el usuario autenticado (cambios asociados a su propiedad y cambios sin propietario). La documentación vigente de los endpoints excluye explícitamente la retención/compactación, los datos públicos del catálogo para uso sin conexión, la sincronización de fotos y un worker periódico.
+`sync` expone `POST /sync/push` y `GET /sync/pull`, ambos autenticados. Push valida hasta 50 operaciones, las procesa en el orden recibido y devuelve un resultado individual `applied`, `rejected` o `conflict`. Pull usa un cursor numérico `server_seq` opaco para el cliente y devuelve los cambios visibles para el usuario autenticado (cambios asociados a su propiedad y cambios sin propietario). La taxonomía de `sync.change_log` admite `category`, `product`, `lot`, `trip`, `checkin` e `incident`; logística escribe cambios de viaje y check-in. La documentación vigente de los endpoints excluye explícitamente la retención/compactación, los datos públicos del catálogo para uso sin conexión, la sincronización de fotos y un worker periódico.
 
-`SyncService` usa `SyncOperationHandlerRegistry`, indexado por entidad, para despachar operaciones mediante `SyncOperationHandlerPort`. La interfaz del handler se exporta desde `sync/index.ts`; los módulos no importan internals de otros módulos. `CatalogLotSyncHandler` se registra en `CatalogSyncBridgeModule`, en `bootstrap/`, y delega las operaciones de creación, actualización, transición y eliminación de lotes al `CatalogService` público. Valida los payloads y las versiones de las operaciones, e informa las versiones del servidor; las transiciones de lote no admitidas se rechazan. Allí no se conecta ningún handler para otras entidades.
+`SyncService` usa `SyncOperationHandlerRegistry`, indexado por entidad, para despachar operaciones mediante `SyncOperationHandlerPort`. La interfaz del handler se exporta desde `sync/index.ts`; los módulos no importan internals de otros módulos. `CatalogLotSyncHandler` se registra en `CatalogSyncBridgeModule`, en `bootstrap/`, y delega las operaciones de creación, actualización, transición y eliminación de lotes al `CatalogService` público. Valida los payloads y las versiones de las operaciones, e informa las versiones del servidor; las transiciones de lote no admitidas se rechazan. `CheckinSyncHandler` se registra en `LogisticsBridgeModule` y delega la creación de check-ins al `CheckinService` público; exige `baseVersion` contra la versión del viaje y rechaza `delete`/`transition`. No hay handlers para `order`, `payment` ni otras entidades.
 
 Los cambios del catálogo y el registro de operaciones de sync comparten una transacción de PostgreSQL. `DrizzleUnitOfWork`, `SyncUnitOfWork` y la unidad de trabajo del catálogo delegan en `DatabaseService.transaction`. `DatabaseService` guarda la transacción activa de Drizzle en `AsyncLocalStorage`; las llamadas anidadas reutilizan esa transacción y, por tanto, las llamadas a repositorios mediante `DatabaseService.current()` participan en ella. Para cada operación de push, esto mantiene atómicos la mutación del catálogo, su fila registrada en el log de cambios y el resultado de la operación procesada. Si un error sale de la transacción de la operación, esta se revierte; los errores del handler se convierten en resultados `rejected`/`conflict` y se guardan como resultados procesados.
 
@@ -44,6 +44,39 @@ Los cambios del catálogo y el registro de operaciones de sync comparten una tra
 4. `catalog:purge-orphan-photos` expires pending reservations and deletes unreferenced objects in `incoming/` and `photos/` that exceed the configured grace period. It is a manual/externally scheduled command; the bucket is not automatically cleaned.
 
 Limits, expiries, quality, concurrency, lease, and rate limits use `CATALOG_PHOTO_*`; defaults are documented in the [README](../README.md#lot-photos). See [ADR-011](adr/ADR-011.md) for consequences and dependencies.
+
+## Logística
+
+`logistics` posee perfiles de transportista, viajes, paradas, check-ins e incidencias en el schema `logistics`. `LogisticsController` expone la API REST; `CarrierProfileService`, `TripPlanningService`, `CheckinService` e `IncidentService` contienen los casos de uso; `DrizzleLogisticsRepository` persiste en PostgreSQL. Las mutaciones relevantes escriben eventos en `shared.outbox_events` y los cambios de viaje/check-in se registran en `sync.change_log` mediante el puerto `LogisticsChangeRecorder`.
+
+### Capas
+
+| Capa            | Contenido                                                                                                                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `domain/`       | `Carrier`, `Trip`, `TripStop`, `Checkin`, `Incident`, `TRIP_STATES`, `TRIP_TRANSITIONS`, `recommendStops` y `zoneFromAddress`. Reglas de transición y recomendación sin frameworks ni coordenadas.               |
+| `application/`  | `CarrierProfileService`, `TripPlanningService` (recomendar, crear, asignar/reasignar, iniciar, completar, cancelar, detectar conflictos), `CheckinService` (registrar check-in HTTP y sync) e `IncidentService`. |
+| `ports/`        | `LogisticsRepository`, `LogisticsUnitOfWork`, `LogisticsClock`, `LogisticsChangeRecorder`, `OrderingLogisticsPort` y `ProviderZonePort`, con sus tokens de inyección.                                            |
+| `adapters/in/`  | `LogisticsController` y `CheckinSyncHandler` (`entity = 'checkin'`). Ambos caminos de check-in llegan al mismo `CheckinService.record`.                                                                          |
+| `adapters/out/` | `DrizzleLogisticsRepository` y `InMemoryLogisticsRepository` (tests).                                                                                                                                            |
+
+### Puertos
+
+| Puerto                    | Responsabilidad                                                                                              | Adaptador en la composición raíz                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `OrderingLogisticsPort`   | Listar pedidos `paid`, consultar un candidato y transicionarlo a `pickup_scheduled`/`in_transit`/`delivered` | `OrderingLogisticsAdapter`, que delega en `OrderingService.listForLogistics`, `getForLogistics` y `transitionForLogistics`. |
+| `ProviderZonePort`        | Obtener la zona textual del proveedor                                                                        | `ProviderZoneAdapter`, que delega en `ProviderProfileService.getProviderPublicSummaries` de `identity`.                     |
+| `LogisticsChangeRecorder` | Registrar cambios de viaje y check-in en sync                                                                | `LogisticsChangeRecorderAdapter`, que delega en `SyncRepositoryPort.appendChange`.                                          |
+| `LogisticsRepository`     | Persistir el schema `logistics`                                                                              | `DrizzleLogisticsRepository`.                                                                                               |
+
+### Planificación y check-ins
+
+- El transportista crea el viaje desde pedidos en estado `paid`. `TripPlanningService` valida perfil, ausencia de paradas previas y unicidad de pedidos; genera dos paradas por pedido (`pickup` y `delivery`) con `sequence` y `zone`, crea el viaje `planned`, lo asigna al mismo transportista (versión 2) y mueve cada pedido a `pickup_scheduled`.
+- La recomendación agrupa por zona textual: recogida desde el perfil público del proveedor y entrega desde la dirección del pedido. Todas las recogidas van antes que las entregas. No existe `MapsPort`, cálculo de distancias ni coordenadas en el esquema o en las respuestas.
+- Los estados son `planned → assigned → in_progress → completed`, más `cancelled`. Las transiciones se validan en el dominio y usan `expectedVersion`; el operador solo reasigna después de consultar `GET /logistics/conflicts`.
+- `CheckinService.record` verifica rol `carrier`, propiedad del viaje, `baseVersion` contra la versión del viaje, ausencia de check-in previo para la parada/tipo y que la parada no esté completada. Cierra la parada, transiciona el pedido con su versión vigente —obtenida de `ordering.getCandidate`, porque la versión capturada al planear queda obsoleta tras `pickup_scheduled`—, escribe `PickupConfirmed`/`DeliveryConfirmed` y registra el cambio `checkin`. Si ya no quedan paradas pendientes, completa el viaje y registra los cambios `trip` correspondientes.
+- `CheckinSyncHandler` valida el payload estricto (`stopId`, `kind`, `clientAt`, `mediaRef?`), exige `baseVersion`, usa `entityId` como ID del check-in y devuelve como `serverVersion` la versión actual del viaje. `delete` y `transition` no están soportados.
+
+La decisión está en [ADR-013](adr/ADR-013.md).
 
 ## Messaging (Telegram / WhatsApp)
 
@@ -163,10 +196,12 @@ Cada módulo es dueño de sus datos. La migración inicial creó schemas para `i
 
 | Archivo                          | Qué conecta                                                                                                                                                  |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `app.module.ts`                  | Importa `SharedInfraModule`, `IdentityBridgeModule`, `MessagingModule`, `IdentityModule`, `OtpDeliveryModule` y el puente del catálogo.                      |
+| `app.module.ts`                  | Importa `SharedInfraModule`, `AuthModule`, los módulos de negocio y los puentes de catálogo, ordering y logística.                                           |
 | `identity-bridge.module.ts`      | Expone `IdentityChannelApplication` (puerto de aplicación de `identity`) para que `bootstrap/` pueda adaptarlo.                                              |
 | `catalog-bridge.module.ts`       | Implementa `ProviderDirectoryPort` mediante `IdentityProviderDirectoryAdapter`, delegando a `ProviderProfileService` de `identity`.                          |
 | `catalog-sync-bridge.module.ts`  | Proporciona `CatalogChangeRecorderAdapter` para el puerto público `ChangeRecorderPort` y registra `CatalogLotSyncHandler` en `SyncOperationHandlerRegistry`. |
+| `ordering-bridge.module.ts`      | Implementa `LOT_QUOTE_PORT`, `LOT_RESERVATION_PORT` y `ORDER_PROVIDER_DIRECTORY` delegando en catálogo e identidad.                                          |
+| `logistics-bridge.module.ts`     | Implementa `OrderingLogisticsPort` y `ProviderZonePort`, proporciona `LogisticsChangeRecorderAdapter` y registra `CheckinSyncHandler`.                       |
 | `otp-delivery.module.ts`         | Selecciona `OtpSenderPort` según `OTP_SENDER`: `InMemoryOtpSender` (test), `DevelopmentOtpSender` (consola, dev), `TelegramOtpSender` (producción).          |
 | `telegram-otp-sender.adapter.ts` | Implementa `OtpSenderPort` usando `IdentityChannelApplication.findActiveChannelLinkByPhone` + `MessagingPort.sendText`. Fire-and-forget, sin bloqueo.        |
 | `identity-channel.adapter.ts`    | Implementa `ChannelIdentityPort` (de `messaging`) delegando a `IdentityChannelApplication`.                                                                  |

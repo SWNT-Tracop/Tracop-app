@@ -5713,7 +5713,7 @@
             "bearer": []
           }
         ],
-        "summary": "Listar pedidos entrantes (proveedor, solo accepted+)",
+        "summary": "Listar pedidos entrantes (productor/proveedor, solo accepted+)",
         "tags": ["ordering"]
       }
     },
@@ -5820,6 +5820,444 @@
         ],
         "summary": "Consultar pedido (comprador o proveedor del pedido)",
         "tags": ["ordering"]
+      }
+    },
+    "/logistics/carrier-profile": {
+      "post": {
+        "operationId": "LogisticsController_upsertProfile",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear o actualizar mi perfil de transportista",
+        "tags": ["logistics"]
+      },
+      "get": {
+        "operationId": "LogisticsController_myProfile",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar mi perfil de transportista",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/carriers": {
+      "get": {
+        "operationId": "LogisticsController_listCarriers",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar transportistas (operador)",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/orders/candidates": {
+      "get": {
+        "operationId": "LogisticsController_listOrderCandidates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Resumen logístico sin datos personales ni dirección completa."
+          },
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar pedidos pagados con datos mínimos para planear viajes",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/recommend": {
+      "post": {
+        "operationId": "LogisticsController_recommend",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recomendar paradas por zonas textuales (sin coordenadas)",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips": {
+      "post": {
+        "operationId": "LogisticsController_createTrip",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear viaje a partir de pedidos",
+        "tags": ["logistics"]
+      },
+      "get": {
+        "operationId": "LogisticsController_listTrips",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar todos los viajes (operador)",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/mine": {
+      "get": {
+        "operationId": "LogisticsController_listMine",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar mis viajes",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/{id}": {
+      "get": {
+        "operationId": "LogisticsController_getTrip",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar viaje",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/{id}/stops": {
+      "get": {
+        "operationId": "LogisticsController_listStops",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar paradas de un viaje",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/{id}/assign": {
+      "post": {
+        "operationId": "LogisticsController_assign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirmar asignación del viaje",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/{id}/reassign": {
+      "post": {
+        "operationId": "LogisticsController_reassign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reasignar viaje para resolver conflictos",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/{id}/start": {
+      "post": {
+        "operationId": "LogisticsController_start",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Iniciar viaje",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/{id}/complete": {
+      "post": {
+        "operationId": "LogisticsController_complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Completar viaje manualmente",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/trips/{id}/cancel": {
+      "post": {
+        "operationId": "LogisticsController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancelar viaje",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/conflicts": {
+      "get": {
+        "operationId": "LogisticsController_conflicts",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pedidos duplicados entre viajes activos",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/stops/{id}/checkins": {
+      "post": {
+        "operationId": "LogisticsController_recordCheckin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Registrar check-in de recogida o entrega",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/incidents": {
+      "post": {
+        "operationId": "LogisticsController_openIncident",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Abrir incidencia de transporte",
+        "tags": ["logistics"]
+      },
+      "get": {
+        "operationId": "LogisticsController_listIncidents",
+        "parameters": [],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar incidencias",
+        "tags": ["logistics"]
+      }
+    },
+    "/logistics/incidents/{id}/resolve": {
+      "post": {
+        "operationId": "LogisticsController_resolveIncident",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Solicitud inválida o no autorizada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resolver incidencia",
+        "tags": ["logistics"]
       }
     }
   },

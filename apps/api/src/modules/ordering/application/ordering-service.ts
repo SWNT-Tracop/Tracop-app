@@ -399,6 +399,56 @@ export class OrderingService {
     return aggregate;
   }
 
+  /** Consulta usada por logistics; la propiedad del viaje se valida en ese módulo. */
+  async listForLogistics(
+    actor: Actor,
+    status: 'paid',
+    limit: number,
+  ): Promise<readonly OrderAggregate[]> {
+    this.requireLogisticsRole(actor);
+    if (!this.orderRepository.listByStatus) return [];
+    return this.orderRepository.listByStatus(status, limit);
+  }
+
+  /** Consulta usada por logistics; la propiedad del viaje se valida en ese módulo. */
+  async getForLogistics(actor: Actor, orderId: string): Promise<OrderAggregate | null> {
+    this.requireLogisticsRole(actor);
+    return this.orderRepository.findById(orderId);
+  }
+
+  async transitionForLogistics(
+    actor: Actor,
+    orderId: string,
+    expectedVersion: number,
+    next: 'pickup_scheduled' | 'in_transit' | 'delivered',
+  ): Promise<OrderAggregate> {
+    this.requireLogisticsRole(actor);
+    return this.uow.run(async () => {
+      const now = this.clock.now();
+      const aggregate = await this.orderRepository.findById(orderId, true);
+      if (!aggregate) throw new DomainError('Pedido no encontrado.', 'not_found');
+      if (aggregate.order.version !== expectedVersion)
+        throw new DomainError('Conflicto de versión.', 'version_conflict');
+      const order = Order.reconstitute(aggregate.order);
+      order.transition(next, now, { actorId: actor.sub });
+      const events = order.drainEvents();
+      const enriched = enrichEventsWithHash(events);
+      const updated: OrderAggregate = {
+        order: order.props,
+        lines: aggregate.lines,
+        quote: aggregate.quote,
+      };
+      await this.orderRepository.save(updated, enriched);
+      await this.recordOrderEvents(events);
+      return updated;
+    });
+  }
+
+  private requireLogisticsRole(actor: Actor): void {
+    if (actor.role !== 'carrier' && actor.role !== 'operator')
+      throw new DomainError('Rol no autorizado.', 'invalid_role');
+  }
+
   private hashRequest(buyerId: string, input: CreateOrderInput): string {
     const normalized = {
       buyerId,

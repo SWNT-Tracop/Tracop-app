@@ -56,6 +56,8 @@ export const orderResponseSchema = z
   .object({
     id: z.string().uuid(),
     status: orderStatusSchema,
+    version: z.number().int().positive(),
+    createdAt: z.string().datetime(),
     lines: z.array(
       z
         .object({

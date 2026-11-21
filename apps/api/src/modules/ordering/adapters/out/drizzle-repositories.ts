@@ -261,6 +261,33 @@ export class DrizzleOrderRepository implements OrderRepository {
     return nextCursor ? { items: aggregates, nextCursor } : { items: aggregates };
   }
 
+  async listByStatus(
+    status: OrderProps['status'],
+    limit: number,
+  ): Promise<readonly OrderAggregate[]> {
+    const db = this.database.current();
+    const orderRows = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.status, status), isNull(orders.deletedAt) ?? sql`true`))
+      .orderBy(asc(orders.createdAt))
+      .limit(limit);
+    return Promise.all(
+      orderRows.map(async (orderRow) => {
+        const lineRows = await db
+          .select()
+          .from(orderLines)
+          .where(eq(orderLines.orderId, orderRow.id));
+        const [quoteRow] = await db.select().from(quotes).where(eq(quotes.orderId, orderRow.id));
+        return {
+          order: toOrderProps(orderRow),
+          lines: lineRows.map(toLineProps),
+          quote: quoteRow ? toQuoteProps(quoteRow) : null!,
+        };
+      }),
+    );
+  }
+
   async findExpiredQuoteIds(now: Date, limit: number): Promise<readonly string[]> {
     const db = this.database.current();
     const rows = await db
