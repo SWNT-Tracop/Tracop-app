@@ -1,0 +1,127 @@
+# TRACOP demo profile: synthetic data only, never production. Started by `pnpm demo:up`.
+# Only the API and the public S3 endpoint are published, on DEMO_BIND (127.0.0.1 by default);
+# PostgreSQL, the worker and the MinIO console stay inside the compose network.
+name: tracop-demo
+
+x-app: &app
+  image: tracop-api:demo
+  build: { context: ., dockerfile: Dockerfile }
+  env_file: .env.demo
+  environment: &app-env
+    NODE_ENV: development
+    APP_PROFILE: demo
+    # Codes go to a private file in a tmpfs of the API container, read by pnpm demo:smoke.
+    OTP_SENDER: demo_capture
+    TELEGRAM_MODE: webhook
+    DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    S3_ENDPOINT: http://storage:9000
+    S3_PUBLIC_ENDPOINT: http://${DEMO_BIND:-127.0.0.1}:${DEMO_S3_PORT:-9100}
+    S3_BUCKET: tracop-demo
+    S3_REGION: us-east-1
+    S3_API_ACCESS_KEY: ${MINIO_ROOT_USER}
+    S3_API_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    S3_POLICY_ACCESS_KEY: ${MINIO_ROOT_USER}
+    S3_POLICY_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    S3_ADMIN_ACCESS_KEY: ${MINIO_ROOT_USER}
+    S3_ADMIN_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    CORS_ALLOWED_ORIGINS: http://localhost:8081
+    # Demo only: issue due settlements every minute instead of every 15, so demo:smoke can wait.
+    JOB_ISSUE_SETTLEMENTS_CRON: '* * * * *'
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?run pnpm demo:up}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run pnpm demo:up}
+      POSTGRES_DB: ${POSTGRES_DB:?run pnpm demo:up}
+    volumes:
+      - demo-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  storage:
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?run pnpm demo:up}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run pnpm demo:up}
+      MINIO_DEFAULT_BUCKETS: tracop-demo
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:8081
+    ports:
+      - '${DEMO_BIND:-127.0.0.1}:${DEMO_S3_PORT:-9100}:9000'
+    volumes:
+      - demo-minio:/bitnami/minio/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fs http://127.0.0.1:9000/minio/health/live']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  setup:
+    <<: *app
+    command: >-
+      sh -c "npx tsx drizzle/migrate.ts && npx tsx drizzle/seed.ts &&
+      npx tsx scripts/configure-storage-lifecycle.ts"
+    restart: 'no'
+    depends_on:
+      db: { condition: service_healthy }
+      storage: { condition: service_healthy }
+
+  api:
+    <<: *app
+    command: ['node', 'dist/main.js']
+    environment:
+      <<: *app-env
+      PORT: '3000'
+      METRICS_TOKEN: ${METRICS_TOKEN}
+    tmpfs:
+      - /run/tracop-otp:mode=0700,uid=1000,gid=1000
+    ports:
+      - '${DEMO_BIND:-127.0.0.1}:${DEMO_API_PORT:-3100}:3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      setup: { condition: service_completed_successfully }
+
+  worker:
+    <<: *app
+    command: ['node', 'dist/worker.js']
+    depends_on:
+      setup: { condition: service_completed_successfully }
+
+  # Scheduled logical backups (pg_dump custom format) into ./backups, keeping BACKUP_KEEP files.
+  backup:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ./backups:/backups
+    command: ['sh', '/scripts/backup-loop.sh']
+    depends_on:
+      setup: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  demo-postgres:
+  demo-minio:

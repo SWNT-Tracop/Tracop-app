@@ -10,8 +10,33 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tracop_ci
+          POSTGRES_PASSWORD: tracop_ci_password
+          POSTGRES_DB: tracop_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U tracop_ci -d tracop_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     env:
       HUSKY: 0
+      REQUIRE_DOCKER: 1
+      NODE_ENV: test
+      DATABASE_URL: postgresql://tracop_ci:tracop_ci_password@127.0.0.1:5432/tracop_ci
+      JWT_SECRET: test-jwt-secret-not-for-real-use-000000000000
+      OTP_HMAC_SECRET: test-otp-hmac-secret-not-for-real-use-00000000
+      RATE_LIMIT_HMAC_SECRET: test-rate-limit-hmac-not-for-real-use-0000000
+      OTP_SENDER: console
+      TELEGRAM_MODE: webhook
+      TELEGRAM_BOT_TOKEN: test-bot-token-not-for-real-use
+      TELEGRAM_WEBHOOK_SECRET: test_webhook_secret
+      TELEGRAM_BOT_USERNAME: tracop_test_bot
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Read pnpm version from packageManager
@@ -25,7 +50,41 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm db:check-migrations
+      - run: pnpm openapi:check
+      - run: pnpm docs:check-matrix
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm build
+      - name: Start built API and check health
+        run: |
+          pnpm db:migrate
+          node apps/api/dist/main.js >/tmp/tracop-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/health >/tmp/tracop-health.json; then
+              cat /tmp/tracop-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/tracop-api.log
+          exit 1
+      - name: Start built worker, check its jobs and graceful stop
+        run: |
+          node apps/api/dist/worker.js >/tmp/tracop-worker.log 2>&1 &
+          worker_pid=$!
+          ready=1
+          for attempt in $(seq 1 60); do
+            if grep -q '^Worker ready\. Registered jobs: .*shared\.dispatch-outbox' /tmp/tracop-worker.log; then ready=0; break; fi
+            if ! kill -0 "$worker_pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 0 ]; then cat /tmp/tracop-worker.log; kill "$worker_pid" 2>/dev/null || true; exit 1; fi
+          grep '^Worker ready' /tmp/tracop-worker.log
+          kill -TERM "$worker_pid"
+          wait "$worker_pid"
+          grep -q '^Worker stopped\.' /tmp/tracop-worker.log || { cat /tmp/tracop-worker.log; exit 1; }
       - run: pnpm test
       - run: pnpm audit --audit-level=high

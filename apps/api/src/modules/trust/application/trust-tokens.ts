@@ -1,0 +1,2 @@
+export const TRUST_SERVICE = Symbol('TRUST_SERVICE');
+export const TRUST_OUTBOX_SUBSCRIBER = Symbol('TRUST_OUTBOX_SUBSCRIBER');

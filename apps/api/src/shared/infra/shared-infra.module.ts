@@ -1,0 +1,72 @@
+import { OUTBOX_METRICS } from '../ports/outbox-metrics.js';
+import { HTTP_METRICS, OPERATIONS_PROBE } from '../ports/operations.js';
+import { HttpMetrics } from './http-metrics.js';
+import { PostgresOperationsProbe } from './operations-probe.js';
+import { PostgresOutboxMetricsQuery } from './outbox-metrics.js';
+import { Global, Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { loadAppEnvironment } from './env.js';
+import { createLogger } from './logger.js';
+import { DatabaseService, createDatabasePool } from './database.js';
+import { DrizzleUnitOfWork, unitOfWorkProvider } from './unit-of-work.js';
+import { DrizzleOutboxWriter, outboxWriterProvider } from './outbox-writer.js';
+import { HttpExceptionFilter } from './http-exception.filter.js';
+import { ImmediateBackgroundDispatcher } from './background-dispatcher.js';
+import {
+  APP_CLOCK,
+  APP_ENVIRONMENT,
+  APP_LOGGER,
+  BACKGROUND_DISPATCHER,
+  DATABASE_POOL,
+  OUTBOX_WRITER,
+  UNIT_OF_WORK,
+} from './tokens.js';
+import { SystemClock } from './system-clock.js';
+import { InMemorySearchRateLimiter } from './search-rate-limiter.js';
+
+@Global()
+@Module({
+  providers: [
+    { provide: APP_ENVIRONMENT, useFactory: () => loadAppEnvironment() },
+    {
+      provide: APP_LOGGER,
+      inject: [APP_ENVIRONMENT],
+      useFactory: (env: ReturnType<typeof loadAppEnvironment>) => createLogger(env.NODE_ENV),
+    },
+    { provide: DATABASE_POOL, inject: [APP_ENVIRONMENT], useFactory: createDatabasePool },
+    DatabaseService,
+    DrizzleUnitOfWork,
+    unitOfWorkProvider,
+    DrizzleOutboxWriter,
+    outboxWriterProvider,
+    PostgresOutboxMetricsQuery,
+    { provide: OUTBOX_METRICS, useExisting: PostgresOutboxMetricsQuery },
+    PostgresOperationsProbe,
+    { provide: OPERATIONS_PROBE, useExisting: PostgresOperationsProbe },
+    { provide: HTTP_METRICS, useValue: new HttpMetrics() },
+    HttpExceptionFilter,
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    SystemClock,
+    InMemorySearchRateLimiter,
+    { provide: APP_CLOCK, useExisting: SystemClock },
+    ImmediateBackgroundDispatcher,
+    { provide: BACKGROUND_DISPATCHER, useExisting: ImmediateBackgroundDispatcher },
+  ],
+  exports: [
+    OPERATIONS_PROBE,
+    HTTP_METRICS,
+    APP_ENVIRONMENT,
+    APP_LOGGER,
+    APP_CLOCK,
+    InMemorySearchRateLimiter,
+    DATABASE_POOL,
+    DatabaseService,
+    UNIT_OF_WORK,
+    OUTBOX_WRITER,
+    OUTBOX_METRICS,
+    BACKGROUND_DISPATCHER,
+    HttpExceptionFilter,
+  ],
+})
+export class SharedInfraModule {}

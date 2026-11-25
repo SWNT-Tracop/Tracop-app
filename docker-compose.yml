@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -15,16 +15,20 @@ services:
       timeout: 5s
       retries: 10
   minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    command: server /data --console-address ':9001'
+    profiles: ['storage']
+    # Same image as the MinIO Testcontainers suite; minio/minio is no longer pullable.
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      # MinIO has no per-bucket CORS and allows every origin by default: always restrict it.
+      # ':-' also replaces an empty value, so MinIO never falls back to allowing every origin.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ALLOWED_ORIGINS:-http://localhost:8081}
     ports:
-      - '9000:9000'
-      - '9001:9001'
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
     volumes:
-      - minio-data:/data
+      - minio-data:/bitnami/minio/data
 volumes:
   postgres-data:
   minio-data:

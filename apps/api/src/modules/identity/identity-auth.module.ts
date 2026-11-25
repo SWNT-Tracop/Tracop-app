@@ -1,0 +1,89 @@
+import { Module } from '@nestjs/common';
+import {
+  APP_CLOCK,
+  APP_ENVIRONMENT,
+  BACKGROUND_DISPATCHER,
+  OUTBOX_WRITER,
+  UNIT_OF_WORK,
+} from '../../shared/infra/tokens.js';
+import { IdentityApplicationService } from './application/identity-application-service.js';
+import { IdentityController } from './adapters/in/identity.controller.js';
+import { IdentityAccessTokenVerifier } from './adapters/out/identity-access-token-verifier.js';
+import { ProviderProfileService } from './application/provider-profile-service.js';
+import { IdentityDataModule } from './identity-data.module.js';
+import { IdentityMaintenanceService } from './application/identity-maintenance-service.js';
+import type { AppEnvironment } from '../../shared/infra/env.js';
+import type { Clock } from '../../shared/kernel/clock.js';
+import type { IdentityRetentionRepository } from './ports/identity-ports.js';
+import {
+  CONSENT_REPOSITORY,
+  DEVICE_REPOSITORY,
+  IDENTITY_ACCESS_TOKEN_VERIFIER,
+  IDENTITY_APPLICATION,
+  PROVIDER_PROFILE_REPOSITORY,
+  PROVIDER_PROFILE_SERVICE,
+  OTP_REPOSITORY,
+  OTP_SENDER,
+  PASSWORDLESS_HASHER,
+  RATE_LIMITER,
+  SESSION_REPOSITORY,
+  TOKEN_SERVICE,
+  USER_REPOSITORY,
+  IDENTITY_MAINTENANCE,
+  IDENTITY_RETENTION_REPOSITORY,
+} from './ports/tokens.js';
+
+@Module({
+  imports: [IdentityDataModule],
+  controllers: [IdentityController],
+  providers: [
+    {
+      provide: IDENTITY_APPLICATION,
+      inject: [
+        APP_ENVIRONMENT,
+        USER_REPOSITORY,
+        OTP_REPOSITORY,
+        SESSION_REPOSITORY,
+        DEVICE_REPOSITORY,
+        CONSENT_REPOSITORY,
+        RATE_LIMITER,
+        OTP_SENDER,
+        TOKEN_SERVICE,
+        PASSWORDLESS_HASHER,
+        APP_CLOCK,
+        UNIT_OF_WORK,
+        OUTBOX_WRITER,
+        BACKGROUND_DISPATCHER,
+      ],
+      useFactory: (...dependencies: ConstructorParameters<typeof IdentityApplicationService>) =>
+        new IdentityApplicationService(...dependencies),
+    },
+    {
+      provide: PROVIDER_PROFILE_SERVICE,
+      inject: [PROVIDER_PROFILE_REPOSITORY, USER_REPOSITORY],
+      useFactory: (...dependencies: ConstructorParameters<typeof ProviderProfileService>) =>
+        new ProviderProfileService(...dependencies),
+    },
+    IdentityAccessTokenVerifier,
+    { provide: IDENTITY_ACCESS_TOKEN_VERIFIER, useExisting: IdentityAccessTokenVerifier },
+    {
+      provide: IDENTITY_MAINTENANCE,
+      inject: [IDENTITY_RETENTION_REPOSITORY, APP_CLOCK, APP_ENVIRONMENT],
+      useFactory: (retention: IdentityRetentionRepository, clock: Clock, env: AppEnvironment) =>
+        new IdentityMaintenanceService(retention, clock, {
+          otpRetentionDays: env.OTP_RETENTION_DAYS,
+          sessionRetentionDays: env.SESSION_RETENTION_DAYS,
+          rateLimitRetentionSeconds: env.RATE_LIMIT_RETENTION_SECONDS,
+          unverifiedRetentionHours: env.UNVERIFIED_RETENTION_HOURS,
+          pseudonymSecret: env.RATE_LIMIT_HMAC_SECRET,
+        }),
+    },
+  ],
+  exports: [
+    IDENTITY_APPLICATION,
+    IDENTITY_ACCESS_TOKEN_VERIFIER,
+    PROVIDER_PROFILE_SERVICE,
+    IDENTITY_MAINTENANCE,
+  ],
+})
+export class IdentityAuthModule {}

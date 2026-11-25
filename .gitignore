@@ -12,3 +12,4 @@ coverage/
 docker-data/
 postgres-data/
 minio-data/
+backups/

@@ -1,0 +1,173 @@
+import {
+  bigint,
+  check,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgSchema,
+  text,
+  numeric,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+
+const catalog = pgSchema('catalog');
+export const categories = catalog.table(
+  'categories',
+  {
+    id: uuid('id').primaryKey(),
+    name: text('name').notNull(),
+    parentId: uuid('parent_id'),
+    depth: integer('depth').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('categories_parent_name_unique').on(table.parentId, sql`lower(${table.name})`),
+    index('categories_parent_id_idx').on(table.parentId),
+  ],
+);
+
+export const products = catalog.table(
+  'products',
+  {
+    id: uuid('id').primaryKey(),
+    categoryId: uuid('category_id').notNull(),
+    name: text('name').notNull(),
+    searchText: text('search_text').notNull(),
+    unit: text('unit').notNull(),
+    attributes: jsonb('attributes').notNull().default({}),
+    status: text('status').notNull().default('approved'),
+    proposedBy: uuid('proposed_by'),
+    reviewedBy: uuid('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    rejectionReason: text('rejection_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('products_category_search_text_active_unique')
+      .on(table.categoryId, table.searchText)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('approved', 'pending_review')`),
+    index('products_category_idx').on(table.categoryId),
+    index('products_status_proposed_by_idx')
+      .on(table.status, table.proposedBy)
+      .where(sql`${table.deletedAt} IS NULL`),
+    check(
+      'products_status_check',
+      sql`${table.status} IN ('approved', 'pending_review', 'rejected')`,
+    ),
+    check(
+      'products_rejection_reason_check',
+      sql`(${table.status} = 'rejected' AND ${table.rejectionReason} IS NOT NULL) OR (${table.status} <> 'rejected')`,
+    ),
+    check(
+      'products_proposal_review_check',
+      sql`(${table.status} = 'pending_review' AND ${table.proposedBy} IS NOT NULL AND ${table.reviewedBy} IS NULL AND ${table.reviewedAt} IS NULL) OR (${table.status} = 'approved' AND ${table.proposedBy} IS NULL AND ${table.reviewedBy} IS NULL AND ${table.reviewedAt} IS NULL) OR (${table.status} IN ('approved', 'rejected') AND ${table.proposedBy} IS NOT NULL AND ${table.reviewedBy} IS NOT NULL AND ${table.reviewedAt} IS NOT NULL)`,
+    ),
+    check(
+      'products_unit_check',
+      sql`${table.unit} IN ('kg','g','lb','und','docena','arroba','quintal','caja','mano','bulto')`,
+    ),
+  ],
+);
+
+export const lots = catalog.table(
+  'lots',
+  {
+    id: uuid('id').primaryKey(),
+    providerId: uuid('provider_id').notNull(),
+    productId: uuid('product_id').notNull(),
+    quantity: numeric('quantity', { precision: 12, scale: 3 }).notNull(),
+    unit: text('unit').notNull(),
+    unitPrice: bigint('unit_price', { mode: 'bigint' }).notNull(),
+    qualityGrade: text('quality_grade'),
+    availableFrom: timestamp('available_from', { withTimezone: true }).notNull(),
+    availableUntil: timestamp('available_until', { withTimezone: true }).notNull(),
+    locationLat: doublePrecision('location_lat').notNull(),
+    locationLng: doublePrecision('location_lng').notNull(),
+    status: text('status').notNull(),
+    version: integer('version').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('lots_provider_status_idx').on(table.providerId, table.status),
+    index('lots_product_status_idx').on(table.productId, table.status),
+    index('lots_available_idx').on(table.status, table.availableUntil, table.availableFrom),
+    index('lots_location_bbox_idx').on(table.locationLat, table.locationLng),
+    check('lots_quantity_positive_check', sql`${table.quantity} > 0`),
+    check('lots_price_positive_check', sql`${table.unitPrice} > 0`),
+    check(
+      'lots_status_check',
+      sql`${table.status} IN ('draft','published','reserved','sold_out','expired','cancelled')`,
+    ),
+    check('lots_window_check', sql`${table.availableFrom} <= ${table.availableUntil}`),
+  ],
+);
+
+export const lotPhotos = catalog.table(
+  'lot_photos',
+  {
+    id: uuid('id').primaryKey(),
+    lotId: uuid('lot_id').notNull(),
+    mediaRef: text('media_ref').notNull(),
+    state: text('state').notNull(),
+    contentType: text('content_type'),
+    sizeBytes: integer('size_bytes'),
+    position: integer('position').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    leaseToken: text('lease_token'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('lot_photos_lot_id_idx').on(table.lotId),
+    index('lot_photos_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.state} <> 'ready'`),
+    index('lot_photos_order_idx')
+      .on(table.lotId, table.position)
+      .where(sql`${table.deletedAt} IS NULL`),
+    check('lot_photos_state_check', sql`${table.state} IN ('pending','processing','ready')`),
+    check('lot_photos_position_check', sql`${table.position} > 0`),
+    check('lot_photos_size_check', sql`${table.sizeBytes} IS NULL OR ${table.sizeBytes} > 0`),
+    check(
+      'lot_photos_ready_metadata_check',
+      sql`(${table.state} = 'ready' AND ${table.contentType} = 'image/webp' AND ${table.sizeBytes} IS NOT NULL) OR (${table.state} <> 'ready' AND ${table.contentType} IS NULL AND ${table.sizeBytes} IS NULL)`,
+    ),
+  ],
+);
+
+export const lotReservations = catalog.table(
+  'lot_reservations',
+  {
+    id: uuid('id').primaryKey(),
+    lotId: uuid('lot_id').notNull(),
+    orderId: uuid('order_id').notNull(),
+    quantityMilli: numeric('quantity_milli', { precision: 12, scale: 3 }).notNull(),
+    status: text('status').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('lot_reservations_lot_status_expiry_idx').on(table.lotId, table.status, table.expiresAt),
+    index('lot_reservations_order_status_idx').on(table.orderId, table.status),
+    uniqueIndex('lot_reservations_active_order_lot_unique')
+      .on(table.lotId, table.orderId)
+      .where(sql`${table.status} = 'active'`),
+    check('lot_reservations_quantity_positive_check', sql`${table.quantityMilli} > 0`),
+    check(
+      'lot_reservations_status_check',
+      sql`${table.status} IN ('active','released','consumed')`,
+    ),
+  ],
+);

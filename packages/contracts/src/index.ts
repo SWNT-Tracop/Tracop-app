@@ -1,1 +1,13 @@
 export { exampleContractSchema } from './schemas/example-contract.js';
+export * from './schemas/identity.js';
+export * from './schemas/messaging.js';
+export * from './schemas/catalog.js';
+export * from './schemas/sync.js';
+export * from './schemas/ordering.js';
+export * from './schemas/logistics.js';
+export * from './schemas/payments.js';
+export * from './schemas/notifications.js';
+export * from './schemas/backoffice.js';
+export * from './schemas/logistics-location.js';
+export * from './schemas/trust.js';
+export * from './schemas/recommendations.js';

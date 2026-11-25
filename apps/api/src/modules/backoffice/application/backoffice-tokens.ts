@@ -1,0 +1,1 @@
+export const BACKOFFICE_SERVICE = Symbol('BACKOFFICE_SERVICE');

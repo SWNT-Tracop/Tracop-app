@@ -1,0 +1,16 @@
+# Reviewed gitleaks 8.30.1 findings (full history, --log-opts=--all). None is a real secret.
+# Format: commit:file:rule:line. No secret value appears here.
+# synthetic test key
+679e65db9ab7cd07b7cf966fd10d60e3a2dbed65:apps/api/src/modules/ai-assistant/adapters/out/anthropic-llm.adapter.spec.ts:generic-api-key:7
+# synthetic canary comment checked to stay out of logs
+c02aaf99f472347b928adf7c8276c11274f1aec0:apps/api/test/trust.e2e-spec.ts:generic-api-key:631
+# empty variable names
+3ac6fcf3ef540bbb2248ca19e43509c6a0f13d1d:.env.example:generic-api-key:58
+# empty variable names
+3ac6fcf3ef540bbb2248ca19e43509c6a0f13d1d:.env.example:generic-api-key:60
+# variable names in a test list
+3ac6fcf3ef540bbb2248ca19e43509c6a0f13d1d:apps/api/test/environment.spec.ts:generic-api-key:23
+# environment.S3_* expressions, not literals
+6de8e96cb707ba2dbcd716e47b5e4a3338d07d3a:apps/api/src/modules/catalog/adapters/out/s3-storage.adapter.ts:generic-api-key:28
+# environment.S3_* expressions, not literals
+6de8e96cb707ba2dbcd716e47b5e4a3338d07d3a:apps/api/src/modules/catalog/adapters/out/s3-storage.adapter.ts:generic-api-key:32
