@@ -24,4 +24,6 @@ fi
 mkdir -p backups
 docker compose -f docker-compose.demo.yml --env-file .env.demo up -d --build --wait api worker storage backup
 echo "Demo up: API on http://${DEMO_BIND:-127.0.0.1}:${DEMO_API_PORT:-3100}, S3 on http://${DEMO_BIND:-127.0.0.1}:${DEMO_S3_PORT:-9100}."
-echo "OTP codes are printed in the API log: docker compose -f docker-compose.demo.yml --env-file .env.demo logs api"
+echo "OTP codes are captured in a private file of the API container (OTP_SENDER=demo_capture), never logged:"
+echo "  docker compose -f docker-compose.demo.yml --env-file .env.demo exec api cat /run/tracop-otp/codes.jsonl"
+echo "Walk the whole flow with: pnpm demo:smoke"

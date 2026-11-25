@@ -52,6 +52,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm db:check-migrations
       - run: pnpm openapi:check
+      - run: pnpm docs:check-matrix
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build

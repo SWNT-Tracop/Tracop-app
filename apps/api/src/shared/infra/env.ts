@@ -50,7 +50,9 @@ const envSchema = z.object({
   // PROVISIONAL: registrations never verified are expired after these hours.
   UNVERIFIED_RETENTION_HOURS: z.coerce.number().int().min(1).max(720).default(24),
   JOB_EXPIRE_UNVERIFIED_CRON: z.string().trim().min(9).default('23 * * * *'),
-  OTP_SENDER: z.enum(['console', 'telegram']).default('console'),
+  OTP_SENDER: z.enum(['console', 'telegram', 'demo_capture']).default('console'),
+  /** Demo profile only (OTP_SENDER=demo_capture): file the smoke script reads the codes from. */
+  OTP_DEMO_CAPTURE_FILE: z.string().trim().min(1).default('/run/tracop-otp/codes.jsonl'),
   TELEGRAM_MODE: z.enum(['webhook', 'polling']).default('webhook'),
   TELEGRAM_BOT_TOKEN: optionalText(z.string().min(1)),
   TELEGRAM_WEBHOOK_SECRET: optionalText(z.string().regex(/^[A-Za-z0-9_-]{1,256}$/)),
@@ -245,7 +247,14 @@ const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
   if (requiresTelegram && !value.TELEGRAM_BOT_TOKEN) {
     ctx.addIssue({ code: 'custom', path: ['TELEGRAM_BOT_TOKEN'], message: 'Required.' });
   }
-  if (value.OTP_SENDER === 'console' && value.NODE_ENV === 'production') {
+  if (value.OTP_SENDER === 'demo_capture' && value.APP_PROFILE !== 'demo') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['OTP_SENDER'],
+      message: 'OTP_SENDER=demo_capture is only available with APP_PROFILE=demo.',
+    });
+  }
+  if (value.OTP_SENDER !== 'telegram' && value.NODE_ENV === 'production') {
     ctx.addIssue({
       code: 'custom',
       path: ['OTP_SENDER'],

@@ -2,11 +2,11 @@
 
 ## Perfiles (`APP_PROFILE`)
 
-| Perfil                      | `NODE_ENV`               | Datos                       | Para qué                                                                      |
-| --------------------------- | ------------------------ | --------------------------- | ----------------------------------------------------------------------------- |
-| `development` (por defecto) | `development` o `test`   | Sintéticos (`pnpm db:seed`) | Trabajo local; Swagger en `/docs`                                             |
-| `demo`                      | nunca `production`       | Solo sintéticos             | Mostrar el producto: OTP en el log de la API, sin Swagger y sin Telegram real |
-| `production`                | `production` obligatorio | Reales                      | El piloto: exige Telegram, HTTPS, S3 y todos los secretos (`env.ts`)          |
+| Perfil                      | `NODE_ENV`               | Datos                       | Para qué                                                                                                                     |
+| --------------------------- | ------------------------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `development` (por defecto) | `development` o `test`   | Sintéticos (`pnpm db:seed`) | Trabajo local; Swagger en `/docs`                                                                                            |
+| `demo`                      | nunca `production`       | Solo sintéticos             | Mostrar el producto: OTP capturado en un archivo privado del contenedor (nunca en los logs), sin Swagger y sin Telegram real |
+| `production`                | `production` obligatorio | Reales                      | El piloto: exige Telegram, HTTPS, S3 y todos los secretos (`env.ts`)                                                         |
 
 La aplicación no arranca con `APP_PROFILE=production` sin `NODE_ENV=production`, ni con `APP_PROFILE=demo` y `NODE_ENV=production`. `db:seed` se niega fuera de `development` y `demo`.
 
@@ -22,7 +22,11 @@ pnpm demo:down    # detiene; DEMO_WIPE=1 pnpm demo:down también borra los volú
 
 - Corre como proyecto `tracop-demo` (`docker-compose.demo.yml`) y **nunca lee `.env`**: usa `.env.demo`, que `demo:up` genera con secretos aleatorios y permisos `600`, y que git ignora.
 - **Solo se publican la API y el S3 público** en `DEMO_BIND` (por defecto `127.0.0.1`): la API en `DEMO_API_PORT` (3100) y el S3 en `DEMO_S3_PORT` (9100). PostgreSQL, el trabajador y la consola de MinIO quedan dentro de la red de compose.
-- Los códigos OTP se leen con `docker compose -f docker-compose.demo.yml --env-file .env.demo logs api`.
+- **Códigos OTP:**
+  - Se leen con `docker compose -f docker-compose.demo.yml --env-file .env.demo exec api cat /run/tracop-otp/codes.jsonl`.
+  - Los escribe `OTP_SENDER=demo_capture` en un tmpfs privado del contenedor, nunca en los logs.
+  - Ese sender solo arranca con `APP_PROFILE=demo`.
+- **Recorrido completo por HTTP:** `pnpm demo:smoke`, explicado en [LIVE-WALKTHROUGH.md](LIVE-WALKTHROUGH.md).
 - Usuarios sintéticos del seed: `+57300000000{01..07}`, uno por rol.
 
 ## Imagen
@@ -60,6 +64,54 @@ pnpm demo:down    # detiene; DEMO_WIPE=1 pnpm demo:down también borra los volú
    - el balanceador usa `GET /health` como comprobación de vida y `GET /ready` como disponibilidad;
    - Prometheus raspa `GET /metrics` con `Authorization: Bearer <METRICS_TOKEN>`.
 6. **`TRUST_PROXY`** según el proxy de la plataforma, para que el límite por IP y el HMAC del audit log vean la IP real.
+
+## Una sola instancia de la API (piloto)
+
+El piloto se despliega con **una sola instancia de la API**. Puede haber uno o más trabajadores.
+
+### Límites de tasa en memoria
+
+Estos límites viven en la memoria de cada proceso. Con N instancias, cada una aplica el límite por su cuenta y el límite real se multiplica por N:
+
+- búsqueda (`CATALOG_SEARCH_RATE_LIMIT`);
+- push y pull de sync (`SYNC_*_RATE_LIMIT`);
+- pedidos (`ORDER_RATE_LIMIT`);
+- propuestas de producto y subida de fotos (`CATALOG_PRODUCT_PROPOSAL_RATE_LIMIT`, `CATALOG_PHOTO_UPLOAD_RATE_LIMIT`);
+- lecturas de ubicación (`LOGISTICS_LOCATION_RATE_LIMIT`);
+- confianza (`TRUST_*_RATE_LIMIT`);
+- recomendaciones (`RECOMMENDATIONS_RATE_LIMIT`);
+- IA por minuto (`AI_REQUESTS_PER_MINUTE`);
+- Telegram, por remitente y global (`TELEGRAM_RATE_LIMIT_*`).
+
+Los límites del OTP (`identity.rate_limit_counters`), el límite diario de IA y el tope mensual de tokens están en PostgreSQL. Esos se comparten entre instancias.
+
+### Antes de escalar a más instancias
+
+Llevar los límites en memoria a PostgreSQL (como el OTP) o a la plataforma: el balanceador o un WAF.
+
+### Por qué una instancia basta en el piloto
+
+La prueba de carga (`docs/LOAD-TEST.md`) mide lo que aguanta una instancia en la máquina de desarrollo. Ese número no es una garantía de producción.
+
+## Alarma de tamaño de las tablas de sync
+
+`sync.change_log` y `sync.processed_operations` crecen sin límite: no hay compactación, ver [SYNC-RETENTION.md](SYNC-RETENTION.md). Una tarea programada de la plataforma, por ejemplo diaria, debe ejecutar:
+
+```sql
+SELECT relname AS tabla,
+       n_live_tup AS filas_aprox,
+       pg_size_pretty(pg_total_relation_size(relid)) AS tamano,
+       pg_total_relation_size(relid) AS bytes
+FROM pg_stat_user_tables
+WHERE schemaname = 'sync' AND relname IN ('change_log', 'processed_operations');
+```
+
+Debe avisar al operador cuando cualquiera de las dos supere `SYNC_TABLE_ALERT_BYTES`, que es solo de la tarea y no lo lee la API.
+
+- **Valor propuesto:** 1 GiB, PROVISIONAL. El equipo debe fijarlo según el disco del PostgreSQL gestionado.
+- **Ritmo de referencia:** la prueba de carga escribe una fila de `change_log` por cada lote creado o cambiado, y una de `processed_operations` por cada operación de push.
+
+Si se alcanza el umbral, hay que implementar la compactación diseñada en [SYNC-RETENTION.md](SYNC-RETENTION.md). Borrar filas a mano rompe los cursores y la idempotencia.
 
 ## Copias de seguridad
 

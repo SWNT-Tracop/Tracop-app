@@ -110,6 +110,7 @@ module.exports = {
   },
   collectCoverageFrom: [
     'src/bootstrap/app.module.ts',
+    'src/bootstrap/otp-delivery.module.ts',
     'src/bootstrap/worker-jobs.ts',
     'src/bootstrap/worker-lifecycle.ts',
     'src/modules/identity/domain/**/*.ts',

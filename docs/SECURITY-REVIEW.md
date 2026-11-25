@@ -62,8 +62,73 @@ Ya cubiertas por pruebas en fases anteriores:
 - `/metrics` exige un token y lo compara en tiempo constante.
 - El personal (`operator`, `finance`, `admin`) solo se crea por CLI, y sus acciones quedan en `audit_log` con la IP como HMAC.
 
+## Aceptación (fase 11)
+
+### Autorización
+
+`apps/api/test/authz-inventory.e2e-spec.ts` recorre las 103 rutas registradas en Nest:
+
+- comprueba que todas, salvo `GET /metrics` y el webhook de Telegram, están en `docs/openapi.json`;
+- exige el guard en cada ruta que no está en la lista blanca;
+- las llama como anónimo y con cada uno de los 7 roles. El resultado queda en [AUTHZ-MATRIX.md](AUTHZ-MATRIX.md).
+
+`apps/api/test/authz-objects.e2e-spec.ts`:
+
+- el usuario A crea cada recurso y el usuario B lo pide;
+- la respuesta debe ser 404 y los datos de A no deben cambiar. El resultado queda en [AUTHZ-OBJECTS.md](AUTHZ-OBJECTS.md).
+
+La prueba encontró tres respuestas 409 que revelaban la existencia del recurso. Ya están corregidas (#73 y #74):
+
+- subir fotos al lote de otro proveedor;
+- reordenar las fotos de un lote ajeno o inexistente;
+- disputar el pago de otro comprador con una versión incorrecta.
+
+### Secretos
+
+- **gitleaks 8.30.1** (binario oficial, con la suma comprobada contra el `checksums.txt` de esa versión):
+  - Recorrió todo el historial (`--log-opts=--all`) y encontró 7 hallazgos, todos falsos positivos: nombres de variables vacías, expresiones `environment.*` y dos literales sintéticos de prueba.
+  - Quedan registrados por huella, sin valor, en `.gitleaksignore`. Con ese archivo, el resultado es «no leaks found».
+- **Arranque en producción** (`apps/api/test/production-startup.spec.ts`):
+  - Producción no arranca con `.env.example` tal como está; el error nombra cada secreto que falta.
+  - Tampoco con el sender de consola o el de captura de la demo, con polling ni con S3 sin HTTPS.
+  - Tampoco con secretos triviales, de prueba o repetidos (#75).
+- **Inventario:** [ENV-CRITICALITY.md](ENV-CRITICALITY.md) clasifica cada variable por criticidad y dice cuáles son secretos que se rotan.
+
+### Dependencias
+
+`pnpm audit`, en todos los niveles: 0 críticas, 0 altas, 3 moderadas y 0 bajas.
+
+- **glob**, GHSA-3g3m-2fjr-6pw4.
+- **minimatch**, GHSA-g3hv-75wg-m249.
+
+Las dos llegan solo por dependencias de desarrollo, por ejemplo `testcontainers` → `archiver` → `glob` → `minimatch`. `pnpm audit --prod` responde «No known vulnerabilities found».
+
+### Cabeceras, CORS, límites, tiempos y errores
+
+- **Cabeceras y CORS:** cubiertos por `apps/api/test/security-headers.spec.ts` y `apps/api/test/cors.spec.ts`.
+- **Cuerpos:** 64 KiB en general y `SYNC_PUSH_MAX_BODY_BYTES` en `POST /sync/push`.
+- **Errores:**
+  - Un 500 responde solo «Error interno.».
+  - Un error de validación responde «Solicitud inválida.», sin detalles de zod.
+  - Un error de dominio responde su código y su mensaje.
+  - Ninguno expone pila, SQL ni rutas internas.
+- **Tiempos:**
+  - El servidor HTTP usa los valores por defecto de Node 22: `requestTimeout` 300 s, `headersTimeout` 60 s y `keepAliveTimeout` 5 s.
+  - No hay un tiempo máximo global por petición.
+  - En la base de datos, `lock_timeout` y `statement_timeout` se aplican solo en las transacciones de pedidos.
+  - Queda como deuda: fijar tiempos en el balanceador o en la API antes de producción.
+
+### OWASP ZAP 2.17.0
+
+Imagen `ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af`. El escaneo fue solo pasivo, contra la demo local y con datos sintéticos.
+
+- **`zap-baseline`** sobre `/health`: 0 fallos y un aviso informativo, 10049 (contenido almacenable en caché en `/` y `/health`, que no llevan `Cache-Control`).
+- **`zap-api-scan -S`** (modo seguro, sin escaneo activo) sobre las 120 URL del documento OpenAPI, con la sesión de un comprador sintético: 0 fallos, 0 avisos y dos alertas informativas:
+  - 100000: respuestas 4xx, esperadas con ids ficticios;
+  - 10049.
+
 ## Pendiente
 
 - Revisión externa (pentest) antes de producción.
 - Límites de tasa compartidos entre instancias, por ejemplo en PostgreSQL como los de OTP.
-- Rotación de secretos documentada en la guía de despliegue, que llega en el PR D2.
+- Tiempos máximos de petición y de consulta para todas las rutas, no solo las de pedidos.

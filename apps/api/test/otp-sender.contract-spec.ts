@@ -1,4 +1,8 @@
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
+  DemoCaptureOtpSender,
   DevelopmentOtpSender,
   InMemoryOtpSender,
 } from '../src/modules/identity/adapters/out/otp-senders.js';
@@ -41,5 +45,48 @@ describe('OtpSenderPort contract', () => {
           OTP_SENDER: 'console',
         } as AppEnvironment),
     ).toThrow();
+  });
+
+  it('captures demo codes in a private file, only in the demo profile', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'tracop-otp-'));
+    try {
+      const file = join(directory, 'otp', 'codes.jsonl');
+      const demo = {
+        NODE_ENV: 'development',
+        APP_PROFILE: 'demo',
+        OTP_SENDER: 'demo_capture',
+        OTP_DEMO_CAPTURE_FILE: file,
+      } as AppEnvironment;
+      const adapter = new DemoCaptureOtpSender(demo);
+      const output = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      try {
+        await runOtpSenderContract((phone, code) => adapter.send(phone, code));
+        await adapter.send(parsedPhone.value, '654321');
+        expect(output).not.toHaveBeenCalled();
+      } finally {
+        output.mockRestore();
+      }
+      expect(
+        readFileSync(file, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line)),
+      ).toEqual([
+        { phone: '+573001234567', code: '123456' },
+        { phone: '+573001234567', code: '654321' },
+      ]);
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+      for (const environment of [
+        { ...demo, APP_PROFILE: 'development' },
+        { ...demo, APP_PROFILE: 'production' },
+        { ...demo, NODE_ENV: 'production' },
+        { ...demo, OTP_SENDER: 'console' },
+      ])
+        expect(() => new DemoCaptureOtpSender(environment as AppEnvironment)).toThrow(
+          /only be used in the demo profile/,
+        );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
