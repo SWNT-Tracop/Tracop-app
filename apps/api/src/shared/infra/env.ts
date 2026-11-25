@@ -209,6 +209,8 @@ const envSchema = z.object({
   S3_API_SECRET_KEY: optionalText(z.string().min(1)),
   S3_POLICY_ACCESS_KEY: optionalText(z.string().min(1)),
   S3_POLICY_SECRET_KEY: optionalText(z.string().min(1)),
+  // MinIO needs path-style addressing; AWS S3 uses virtual-hosted style. Set `false` for AWS.
+  S3_FORCE_PATH_STYLE: booleanFromString.default(true),
 });
 
 const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {

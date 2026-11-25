@@ -1,0 +1,32 @@
+name: Deploy (CD)
+
+# Actualiza la demo ya desplegada en la EC2 vía SSH (sin ECR: la imagen se compila
+# en la propia instancia). En Learner Lab no hay IAM para que GitHub Actions hable
+# con AWS, así que esto es un disparo MANUAL y la vía principal es `terraform apply`.
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   EC2_HOST     → IP pública de la EC2 (cambia en cada sesión del lab)
+#   EC2_USER     → usuario SSH (ubuntu)
+#   EC2_SSH_KEY  → clave privada SSH (terraform output ssh_private_key_pem)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy over SSH
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy (git pull + build + up)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/tracop
+            git fetch origin && git checkout main && git pull --ff-only
+            docker compose -f docker-compose.aws.yml --env-file .env.demo up -d --build --wait api worker
+            curl -fsS http://127.0.0.1:3000/health
+            curl -fsS http://127.0.0.1:3000/ready | grep -q '"status":"ready"'
