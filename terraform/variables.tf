@@ -25,7 +25,7 @@ variable "repo_url" {
 variable "repo_branch" {
   description = "Rama a desplegar."
   type        = string
-  default     = "main"
+  default     = "deploy/aws-demo"
 }
 
 variable "api_port" {
