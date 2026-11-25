@@ -1,0 +1,106 @@
+# Producción: API + worker + PostgreSQL + Caddy (TLS automático).
+# La imagen se publica en GHCR y llega por `docker compose pull`.
+#
+# Requiere:
+#   - .env (600, fuera del repo) con los secretos de producción y DATABASE_URL.
+#   - ./Caddyfile con el dominio real.
+#   - Que los cambios de código previos estén integrados: imagen sin devDependencies
+#     (Dockerfile) y migraciones compiladas a dist (node dist/drizzle/migrate.js).
+name: tracop-prod
+
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+  api:
+    image: ghcr.io/swnt-tracop/tracop-api:${VERSION:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: '3000'
+      NODE_ENV: production
+      APP_PROFILE: production
+      TRUST_PROXY: '1'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    image: ghcr.io/swnt-tracop/tracop-api:${VERSION:-latest}
+    restart: unless-stopped
+    command: ['node', 'dist/worker.js']
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      APP_PROFILE: production
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    image: ghcr.io/swnt-tracop/tracop-api:${VERSION:-latest}
+    restart: 'no'
+    command: ['node', 'dist/drizzle/migrate.js']
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD}
+      POSTGRES_DB: tracop
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d tracop']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Sin puerto publicado: solo accesible desde la red de Compose.
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_SUPERUSER:-postgres}
+      PGPASSWORD: ${DB_SUPERUSER_PASSWORD}
+      PGDATABASE: tracop
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ./backups:/backups
+    command: ['sh', '/scripts/backup-loop.sh']
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:

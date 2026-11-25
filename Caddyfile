@@ -1,0 +1,14 @@
+# Caddy: TLS automático (Let's Encrypt) delante de la API.
+# Reemplazá <dominio> por el dominio real (ej. api-staging.tracop.co).
+{
+	# Límites de tamaño y tiempo para la API.
+	request_body {
+		max_size 10MB
+	}
+
+	<dominio> {
+		reverse_proxy api:3000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+}
