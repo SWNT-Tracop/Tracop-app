@@ -101,6 +101,7 @@ Cómo rotar cada secreto y qué efecto tiene: [DEPLOYMENT.md](DEPLOYMENT.md), «
 | `S3_PUBLIC_ENDPOINT`                           | Alta (seguridad)                 | no    | HTTPS obligatorio en producción.                                                                                    |
 | `S3_BUCKET`                                    | Alta (seguridad)                 | no    |                                                                                                                     |
 | `S3_REGION`                                    | Alta (seguridad)                 | no    |                                                                                                                     |
+| `S3_FORCE_PATH_STYLE`                          | Baja (operación)                 | no    | `false` en AWS S3, `true` en MinIO local.                                                                           |
 | `PRIVACY_POLICY_VERSION`                       | Alta (privacidad, Ley 1581)      | no    | PROVISIONAL (§23.9, §23.13).                                                                                        |
 | `UNVERIFIED_RETENTION_HOURS`                   | Alta (privacidad, Ley 1581)      | no    | Plazo PROVISIONAL (§23.13).                                                                                         |
 | `OTP_RETENTION_DAYS`                           | Alta (privacidad, Ley 1581)      | no    | Plazo PROVISIONAL (§23.13).                                                                                         |
