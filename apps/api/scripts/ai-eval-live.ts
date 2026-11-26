@@ -1,6 +1,7 @@
 /**
  * Live evaluation of the lot draft extraction against the real model (`pnpm ai:eval-live`).
- * Run by a person, never in CI. Reads LLM_API_KEY and LLM_MODEL from the environment, stops at
+ * Run by a person, never in CI. Reads LLM_PROVIDER (anthropic by default), LLM_API_KEY and
+ * LLM_MODEL from the environment, stops at
  * a hard cap of calls and tokens, and prints ONLY per-field accuracy, critical errors (by case
  * number), tokens and an estimated cost: never message contents, model answers or the key.
  *
@@ -8,7 +9,11 @@
  *   AI_EVAL_INPUT_USD_PER_MTOK and AI_EVAL_OUTPUT_USD_PER_MTOK (for the cost estimate; take
  *   them from the provider's current pricing page for the chosen model).
  */
-import { AnthropicLLMAdapter } from '../src/modules/ai-assistant/adapters/out/anthropic-llm.adapter.js';
+import {
+  createLLMAdapter,
+  LLM_PROVIDERS,
+  type LLMProvider,
+} from '../src/modules/ai-assistant/adapters/out/llm-adapter-factory.js';
 import { applyExtraction } from '../src/modules/ai-assistant/domain/apply-answer.js';
 import { parseDay } from '../src/modules/ai-assistant/domain/dates.js';
 import { parseUnit } from '../src/modules/ai-assistant/domain/parsing.js';
@@ -63,7 +68,13 @@ const main = async (): Promise<void> => {
   const maxTokens = numberFromEnv('AI_EVAL_MAX_TOKENS', 200_000)!;
   const inputPrice = numberFromEnv('AI_EVAL_INPUT_USD_PER_MTOK', null);
   const outputPrice = numberFromEnv('AI_EVAL_OUTPUT_USD_PER_MTOK', null);
-  const llm = new AnthropicLLMAdapter({
+  const provider = (process.env.LLM_PROVIDER || 'anthropic') as LLMProvider;
+  if (!LLM_PROVIDERS.includes(provider)) {
+    console.error(`LLM_PROVIDER must be one of: ${LLM_PROVIDERS.join(', ')}.`);
+    process.exit(2);
+  }
+  const llm = createLLMAdapter({
+    provider,
     apiKey,
     model,
     timeoutMs: numberFromEnv('LLM_TIMEOUT_MS', 15_000)!,

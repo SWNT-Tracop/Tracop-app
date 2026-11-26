@@ -275,6 +275,11 @@ describe('runtime environment validation', () => {
       AI_ENABLED: true,
       LLM_MODEL: 'some-model',
     });
+    // Google AI Studio (Gemini) is the second provider; anything else is refused.
+    process.env.LLM_PROVIDER = 'google';
+    expect(loadAppEnvironment('/tmp/tracop-no-env')).toMatchObject({ LLM_PROVIDER: 'google' });
+    process.env.LLM_PROVIDER = 'openai';
+    expect(() => loadAppEnvironment('/tmp/tracop-no-env')).toThrow('LLM_PROVIDER');
   });
 
   it('keeps the demo profile away from production and production away from other NODE_ENV', () => {
