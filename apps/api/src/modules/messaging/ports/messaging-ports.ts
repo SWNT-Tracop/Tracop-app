@@ -27,7 +27,9 @@ export interface ConversationPort {
 }
 
 export type LinkChannelOutcome =
-  | { status: 'linked' | 'already_linked' }
+  /** `code`: sign-in code issued for a newly linked chat, delivered in the reply. */
+  | { status: 'linked'; code?: string }
+  | { status: 'already_linked' }
   | { status: 'user_not_found' | 'invalid_phone' | 'conflict' };
 
 export interface ChannelIdentityPort {

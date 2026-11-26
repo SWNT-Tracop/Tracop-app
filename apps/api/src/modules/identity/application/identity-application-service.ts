@@ -38,6 +38,9 @@ export interface RequestOtpResult {
   botLink: string;
 }
 
+/** Identical for new and existing phones, so it never reveals whether an account exists. */
+export type RegisterResult = RequestOtpResult;
+
 // Verified access claims the edge hands to these use cases: profile reads use
 // the subject and logout uses the session.
 export interface AuthenticatedActor {
@@ -103,9 +106,7 @@ export class IdentityApplicationService {
     private readonly background: BackgroundDispatcher,
   ) {}
 
-  async registerUser(
-    command: RegisterUserCommand,
-  ): Promise<Result<{ message: string }, DomainError>> {
+  async registerUser(command: RegisterUserCommand): Promise<Result<RegisterResult, DomainError>> {
     const phoneResult = PhoneNumber.parse(command.phone, this.environment.allowedCountryCodes);
     if (!phoneResult.ok) return phoneResult;
     if (!SELF_REGISTERABLE_ROLES.includes(command.role)) {
@@ -129,7 +130,7 @@ export class IdentityApplicationService {
     if (profileError) return failure(profileError);
     const phone = phoneResult.value;
     const limitError = await this.consumeOtpRequestLimits(phone, command.ip);
-    if (limitError) return success({ message: GENERIC_REGISTER_RESPONSE });
+    if (limitError) return success(this.registerResponse());
 
     const now = this.clock.now();
     const creation = await this.unitOfWork.run(async () => {
@@ -182,7 +183,11 @@ export class IdentityApplicationService {
     const purpose = creation.user.status === 'active' ? 'login' : 'registration';
     const otpResult = await this.requestOtpInternal(phone, purpose);
     if (!otpResult.ok && otpResult.error.code !== 'rate_limited') return otpResult;
-    return success({ message: GENERIC_REGISTER_RESPONSE });
+    return success(this.registerResponse());
+  }
+
+  private registerResponse(): RegisterResult {
+    return { message: GENERIC_REGISTER_RESPONSE, botLink: this.telegramBotLink() };
   }
 
   async requestOtp(phoneInput: string, ip: string): Promise<Result<RequestOtpResult, DomainError>> {
@@ -224,12 +229,39 @@ export class IdentityApplicationService {
       : null;
   }
 
+  /**
+   * A code for the chat that was just linked: registration asked for one before the chat existed,
+   * so it was never delivered. Only the per-phone window applies here, not the cooldown that
+   * registration already consumed; the caller delivers the code in its own reply.
+   */
+  async issueCodeForNewChannelLink(phoneInput: string): Promise<string | null> {
+    const phone = PhoneNumber.parse(phoneInput, this.environment.allowedCountryCodes);
+    if (!phone.ok) return null;
+    const window = await this.rateLimiter.consume(
+      `otp:phone:window:${phone.value.value}`,
+      this.environment.OTP_PHONE_LIMIT,
+      this.environment.OTP_PHONE_WINDOW_SECONDS,
+    );
+    if (!window.allowed) return null;
+    return this.createOtp(phone.value, undefined);
+  }
+
   private async requestOtpInternal(
     phone: PhoneNumber,
     forcedPurpose: 'registration' | 'login' | undefined,
   ): Promise<Result<{ message: string }, DomainError>> {
+    const code = await this.createOtp(phone, forcedPurpose);
+    if (code !== null) this.background.dispatch(() => this.sender.send(phone, code));
+    return success({ message: GENERIC_OTP_RESPONSE });
+  }
+
+  /** Stores a fresh OTP and returns its code, or null when the phone cannot authenticate. */
+  private async createOtp(
+    phone: PhoneNumber,
+    forcedPurpose: 'registration' | 'login' | undefined,
+  ): Promise<string | null> {
     const user = await this.users.findByPhone(phone);
-    if (!user || user.status === 'suspended') return success({ message: GENERIC_OTP_RESPONSE });
+    if (!user || user.status === 'suspended') return null;
     const purpose = forcedPurpose ?? (user.status === 'active' ? 'login' : 'registration');
     const now = this.clock.now();
     const code = String(randomInt(0, 10 ** this.environment.OTP_LENGTH)).padStart(
@@ -248,8 +280,7 @@ export class IdentityApplicationService {
       createdAt: now,
     };
     await this.unitOfWork.run(() => this.otps.create(otp));
-    this.background.dispatch(() => this.sender.send(phone, code));
-    return success({ message: GENERIC_OTP_RESPONSE });
+    return code;
   }
 
   async verifyOtp(command: VerifyOtpCommand): Promise<Result<AuthSessionResult, DomainError>> {

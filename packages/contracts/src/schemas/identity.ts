@@ -40,6 +40,13 @@ export const registerUserSchema = z
 
 export const requestOtpSchema = z.object({ phone: z.string().min(1).max(32) }).strict();
 
+/** Same body whether or not the phone exists; `botLink` opens the bot that delivers the code. */
+export const registerResponseSchema = z
+  .object({ message: z.string(), botLink: z.string().url() })
+  .strict();
+
+export type RegisterResponse = z.infer<typeof registerResponseSchema>;
+
 export const requestOtpResponseSchema = z
   .object({ message: z.string(), botLink: z.string().url() })
   .strict();

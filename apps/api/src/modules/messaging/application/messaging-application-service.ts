@@ -77,7 +77,17 @@ export class MessagingApplicationService implements MessagingApplication {
 
     switch (outcome.status) {
       case 'linked':
-        return { kind: 'processed', replies: [this.reply(message, messagingMessages.linked)] };
+        return {
+          kind: 'processed',
+          replies: [
+            this.reply(
+              message,
+              outcome.code === undefined
+                ? messagingMessages.linked
+                : messagingMessages.linkedWithCode(outcome.code),
+            ),
+          ],
+        };
       case 'already_linked':
         return {
           kind: 'processed',

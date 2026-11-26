@@ -8,6 +8,8 @@ import { describePostgres, resetPostgresFixtures } from './postgres-suite.js';
 import { IdentityChannelAdapter } from '../src/bootstrap/identity-channel.adapter.js';
 import {
   IDENTITY_CHANNEL_APPLICATION,
+  IDENTITY_CHANNEL_ONBOARDING,
+  type ChannelOnboardingService,
   type IdentityChannelApplication,
 } from '../src/modules/identity/index.js';
 import {
@@ -60,9 +62,9 @@ describePostgres('messaging transaction boundaries', () => {
       .useValue(new FakeMessagingAdapter())
       .overrideProvider(CHANNEL_IDENTITY_PORT)
       .useFactory({
-        inject: [IDENTITY_CHANNEL_APPLICATION],
-        factory: (identity: IdentityChannelApplication) =>
-          new ControllableIdentityAdapter(new IdentityChannelAdapter(identity)),
+        inject: [IDENTITY_CHANNEL_APPLICATION, IDENTITY_CHANNEL_ONBOARDING],
+        factory: (identity: IdentityChannelApplication, onboarding: ChannelOnboardingService) =>
+          new ControllableIdentityAdapter(new IdentityChannelAdapter(identity, onboarding)),
       })
       .compile();
     app = moduleRef.createNestApplication();

@@ -2,6 +2,8 @@ export const messagingMessages = {
   start: 'Hola, soy TRACOP. Para vincular tu cuenta, comparte tu contacto con el botón de abajo.',
   shareContact: 'Compartir mi contacto',
   linked: 'Tu cuenta de TRACOP quedó vinculada. Ya puedes recibir notificaciones por este chat.',
+  linkedWithCode: (code: string): string =>
+    `Tu cuenta de TRACOP quedó vinculada. Tu código es ${code}: escríbelo en la app para entrar. Vence en pocos minutos. No lo compartas.`,
   alreadyLinked: 'Tu cuenta ya estaba vinculada a este chat.',
   registerFirst:
     'No encontramos una cuenta de TRACOP con ese número. Regístrate primero en la app y vuelve a intentarlo.',

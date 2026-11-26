@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import {
   refreshSessionSchema,
   registerUserSchema,
+  registerResponseSchema,
   requestOtpSchema,
   requestOtpResponseSchema,
   updateMeSchema,
@@ -70,8 +71,9 @@ export class IdentityController {
     platform: 'android',
     consent: { accepted: true, version: 'v0-draft' },
   })
-  @ApiZodResponse(201, z.object({ message: z.string() }), {
+  @ApiZodResponse(201, registerResponseSchema, {
     message: 'Si el registro puede continuar, recibirás un código.',
+    botLink: 'https://t.me/tracop_demo_bot?start=link',
   })
   @ApiErrorResponses(400, 403, 409, 429)
   async register(@Body() body: unknown, @Req() request: Request) {

@@ -3,18 +3,27 @@ import type {
   ChannelUserRef,
   LinkChannelOutcome,
 } from '../modules/messaging/index.js';
-import type { IdentityChannelApplication } from '../modules/identity/index.js';
+import type {
+  ChannelOnboardingService,
+  IdentityChannelApplication,
+} from '../modules/identity/index.js';
 
 export class IdentityChannelAdapter implements ChannelIdentityPort {
-  constructor(private readonly identity: IdentityChannelApplication) {}
+  constructor(
+    private readonly identity: IdentityChannelApplication,
+    private readonly onboarding: Pick<ChannelOnboardingService, 'linkChannel'>,
+  ) {}
 
   async linkChannel(ref: ChannelUserRef, phone: string): Promise<LinkChannelOutcome> {
-    const result = await this.identity.linkChannel({
+    const result = await this.onboarding.linkChannel({
       channel: ref.channel,
       channelUserId: ref.channelUserId,
       phone,
     });
-    if (result.ok) return { status: result.value.status };
+    if (result.ok) {
+      const { status, code } = result.value;
+      return status === 'linked' && code !== undefined ? { status, code } : { status };
+    }
 
     switch (result.error.code) {
       case 'user_not_found':
