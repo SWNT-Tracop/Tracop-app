@@ -29,7 +29,24 @@ Todo se hace por la **API real**, con sesiones que el seed emite para cada cuent
   - Un fallo no revierte el despliegue.
   - `SHOWCASE_SEED=off` lo desactiva.
 - **En cada `docker compose up`** del stack de AWS: el servicio de un solo uso `showcase` hace lo mismo.
+- Ambos ejecutan `apps/api/scripts/deploy-after-start.sh`, que además aplica `BOOTSTRAP_ADMIN_PHONE` (ver abajo).
 - **Nunca borra nada por su cuenta.**
+
+## Volverse admin en el servidor (una sola vez)
+
+En el `.env.demo` **del servidor** (nunca en el repositorio), agrega una línea con el número en formato E.164:
+
+```bash
+BOOTSTRAP_ADMIN_PHONE=+573XXXXXXXXX
+```
+
+En el siguiente despliegue, o en el siguiente `docker compose up`, esa cuenta queda como **admin**:
+
+- **Si ya existe** (porque la persona se registró en la app), se promueve: conserva su nombre, se cierran sus sesiones y queda `staff.promote` en la auditoría.
+- **Si no existe**, se crea.
+- **Si ya es admin, no se hace nada:** no se cierran sesiones ni se escribe otra fila de auditoría.
+
+Después, la persona cierra sesión en la app y vuelve a entrar con su número. Si la base se rehace, el siguiente despliegue la vuelve admin otra vez.
 
 ## Comandos (en el servidor, dentro del contenedor de la API)
 
