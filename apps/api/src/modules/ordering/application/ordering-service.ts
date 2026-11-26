@@ -607,8 +607,9 @@ export class OrderingService {
     });
   }
 
+  /** Carriers and the logistics staff (operator and admin, as in the logistics module). */
   private requireLogisticsRole(actor: Actor): void {
-    if (actor.role !== 'carrier' && actor.role !== 'operator')
+    if (!['carrier', 'operator', 'admin'].includes(actor.role))
       throw new DomainError('Rol no autorizado.', 'invalid_role');
   }
 

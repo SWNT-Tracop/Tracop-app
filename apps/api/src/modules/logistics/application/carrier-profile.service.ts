@@ -1,3 +1,4 @@
+import { isLogisticsStaff } from '../domain/logistics-staff.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { DomainError } from '../../../shared/kernel/domain-error.js';
 import { Carrier } from '../domain/carrier.js';
@@ -52,7 +53,7 @@ export class CarrierProfileService {
   }
 
   async list(actor: LogisticsActor, limit = 50): Promise<readonly CarrierProps[]> {
-    if (actor.role !== 'operator')
+    if (!isLogisticsStaff(actor.role))
       throw new DomainError('Solo el operador puede listar transportistas.', 'invalid_role');
     return this.repository.listCarriers(Math.min(Math.max(limit, 1), 200));
   }

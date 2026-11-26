@@ -1,3 +1,4 @@
+import { isLogisticsStaff } from './logistics-staff.js';
 import type { TripProps } from './trip.js';
 import type { TripStopProps } from './trip-stop.js';
 
@@ -7,9 +8,6 @@ export interface GeoPoint {
 }
 
 export const MAX_PICKUP_POINTS = 20;
-
-/** Staff roles that may see exact locations (always audited). */
-const LOCATION_STAFF_ROLES: readonly string[] = ['operator', 'admin'];
 
 export type LocationDenial = 'not_found' | 'not_allowed' | 'trip_inactive' | 'stop_completed';
 
@@ -24,7 +22,7 @@ export const locationAccess = (
 ): { readonly granted: true } | { readonly granted: false; readonly reason: LocationDenial } => {
   if (!trip) return { granted: false, reason: 'not_found' };
   const isAssignedCarrier = actor.role === 'carrier' && trip.carrierId === actor.sub;
-  if (!isAssignedCarrier && !LOCATION_STAFF_ROLES.includes(actor.role))
+  if (!isAssignedCarrier && !isLogisticsStaff(actor.role))
     return { granted: false, reason: 'not_allowed' };
   if (trip.status !== 'assigned' && trip.status !== 'in_progress')
     return { granted: false, reason: 'trip_inactive' };

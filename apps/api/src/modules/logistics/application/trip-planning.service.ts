@@ -1,3 +1,4 @@
+import { isLogisticsStaff } from '../domain/logistics-staff.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { OUTBOX_WRITER } from '../../../shared/ports/outbox-writer.js';
 import { AUDIT_WRITER, type AuditWriter } from '../../../shared/ports/audit-writer.js';
@@ -199,14 +200,14 @@ export class TripPlanningService {
     carrierId?: string,
   ): Promise<TripProps> {
     const target = carrierId ?? actor.sub;
-    if (actor.role !== 'operator' && target !== actor.sub)
+    if (!isLogisticsStaff(actor.role) && target !== actor.sub)
       throw new DomainError('Solo el operador puede reasignar viajes.', 'invalid_role');
     return this.mutateTrip(
       actor,
       tripId,
       expectedVersion,
       (trip, now) => {
-        if (actor.role === 'operator') trip.reassign(target, now);
+        if (isLogisticsStaff(actor.role)) trip.reassign(target, now);
         else trip.assign(target, now);
       },
       'trip.reassign',
@@ -254,7 +255,7 @@ export class TripPlanningService {
     this.requireCarrierOrOperator(actor);
     const trip = await this.repository.findTrip(tripId);
     if (!trip) throw new DomainError('Viaje no encontrado.', 'not_found');
-    if (actor.role !== 'operator' && trip.carrierId !== actor.sub)
+    if (!isLogisticsStaff(actor.role) && trip.carrierId !== actor.sub)
       throw new DomainError('Viaje no encontrado.', 'not_found');
     return trip;
   }
@@ -305,7 +306,7 @@ export class TripPlanningService {
       // The row lock makes the version check and the write atomic for concurrent mutations.
       const current = await this.repository.findTripForUpdate(tripId);
       if (!current) throw new DomainError('Viaje no encontrado.', 'not_found');
-      if (actor.role !== 'operator' && current.carrierId !== actor.sub)
+      if (!isLogisticsStaff(actor.role) && current.carrierId !== actor.sub)
         throw new DomainError('Viaje no encontrado.', 'not_found');
       if (current.version !== expectedVersion) {
         const conflict = new DomainError(
@@ -323,7 +324,7 @@ export class TripPlanningService {
       await this.repository.saveTrip(saved, current.route);
       const events = trip.drainEvents();
       await this.publish(saved, events);
-      if (operatorAuditAction && actor.role === 'operator')
+      if (operatorAuditAction && isLogisticsStaff(actor.role))
         await this.audit.record({
           actorId: actor.sub,
           actorRole: actor.role,
@@ -357,12 +358,12 @@ export class TripPlanningService {
   }
 
   private requireOperator(actor: LogisticsActor): void {
-    if (actor.role !== 'operator')
+    if (!isLogisticsStaff(actor.role))
       throw new DomainError('Solo el operador puede resolver conflictos.', 'invalid_role');
   }
 
   private requireCarrierOrOperator(actor: LogisticsActor): void {
-    if (actor.role !== 'carrier' && actor.role !== 'operator')
+    if (actor.role !== 'carrier' && !isLogisticsStaff(actor.role))
       throw new DomainError('Rol no autorizado.', 'invalid_role');
   }
 }

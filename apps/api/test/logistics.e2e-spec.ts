@@ -38,6 +38,8 @@ describePostgres('Logistics HTTP and sync (Nest + PostgreSQL Testcontainers)', (
   let buyer: Account;
   let producer: Account;
   let operator: Account;
+  let admin: Account;
+  let finance: Account;
   let orderId: string;
   const coordinates = [{ latitude: 5.5, longitude: -73.4 }];
   let phoneSequence = 1;
@@ -72,7 +74,9 @@ describePostgres('Logistics HTTP and sync (Nest + PostgreSQL Testcontainers)', (
   const auth = (account: Account) => `Bearer ${account.token}`;
   const actor = (account: Account) => ({ sub: account.userId, role: account.role });
 
-  const createOperator = async (): Promise<Account> => {
+  const createStaff = async (
+    role: 'operator' | 'admin' | 'finance' = 'operator',
+  ): Promise<Account> => {
     const id = createId();
     const deviceId = createId();
     const sessionId = createId();
@@ -84,9 +88,9 @@ describePostgres('Logistics HTTP and sync (Nest + PostgreSQL Testcontainers)', (
     const user = User.createStaff(
       {
         id,
-        role: 'operator',
+        role,
         phone: parsed.value,
-        fullName: 'Operador sintético',
+        fullName: `Personal ${role} sintético`,
         locale: 'es-CO',
         createdAt: now,
       },
@@ -94,8 +98,8 @@ describePostgres('Logistics HTTP and sync (Nest + PostgreSQL Testcontainers)', (
     );
     await pool.query(
       `INSERT INTO identity.users (id, role, full_name, phone, status, locale, phone_verified_at, created_at, updated_at)
-       VALUES ($1, 'operator', $2, $3, 'active', 'es-CO', $4, $4, $4)`,
-      [id, user.props.fullName, phoneValue, now],
+       VALUES ($1, $5, $2, $3, 'active', 'es-CO', $4, $4, $4)`,
+      [id, user.props.fullName, phoneValue, now, role],
     );
     await pool.query(
       `INSERT INTO identity.devices (id, user_id, platform, created_at) VALUES ($1, $2, 'web', $3)`,
@@ -127,7 +131,7 @@ describePostgres('Logistics HTTP and sync (Nest + PostgreSQL Testcontainers)', (
         ): Promise<string>;
       }
     ).issueAccessToken(user.props, sessionId, deviceId, now);
-    return { token, userId: id, role: 'operator' };
+    return { token, userId: id, role };
   };
 
   beforeAll(async () => {
@@ -150,7 +154,9 @@ describePostgres('Logistics HTTP and sync (Nest + PostgreSQL Testcontainers)', (
     otherCarrier = await createAccount('carrier');
     buyer = await createAccount('buyer');
     producer = await createAccount('producer');
-    operator = await createOperator();
+    operator = await createStaff('operator');
+    admin = await createStaff('admin');
+    finance = await createStaff('finance');
 
     await profiles.upsertProviderProfile(producer.userId, {
       displayName: 'Finca sintética',
@@ -453,5 +459,27 @@ describePostgres('Logistics HTTP and sync (Nest + PostgreSQL Testcontainers)', (
       })
       .expect(201);
     expect(duplicate.body.results[0]).toMatchObject({ status: 'conflict' });
+  });
+
+  it('lets the admin run logistics like the operator, and keeps finance out', async () => {
+    for (const path of [
+      '/logistics/trips',
+      '/logistics/carriers',
+      '/logistics/conflicts',
+      '/logistics/incidents',
+    ]) {
+      await request(app.getHttpServer()).get(path).set('Authorization', auth(admin)).expect(200);
+      await request(app.getHttpServer()).get(path).set('Authorization', auth(finance)).expect(403);
+    }
+    const trips = await request(app.getHttpServer())
+      .get('/logistics/trips')
+      .set('Authorization', auth(admin))
+      .expect(200);
+    const asOperator = await request(app.getHttpServer())
+      .get('/logistics/trips')
+      .set('Authorization', auth(operator))
+      .expect(200);
+    expect(trips.body).toEqual(asOperator.body);
+    expect(findCoordinateExposure(trips.body, coordinates)).toEqual([]);
   });
 });

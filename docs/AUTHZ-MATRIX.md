@@ -23,14 +23,14 @@ Rutas: 103. Fuera de OpenAPI a propósito: `GET /metrics` (Bearer METRICS_TOKEN;
 | `GET /catalog/products`                                | en la aplicación                                             | 401       | 200      | 200      | 200   | 200     | 200      | 200     | 200   |
 | `GET /health`                                          | pública                                                      | 200       | 200      | 200      | 200   | 200     | 200      | 200     | 200   |
 | `GET /logistics/carrier-profile`                       | carrier                                                      | 401       | 403      | 403      | 403   | 404     | 403      | 403     | 403   |
-| `GET /logistics/carriers`                              | operator                                                     | 401       | 403      | 403      | 403   | 403     | 200      | 403     | 403   |
-| `GET /logistics/conflicts`                             | operator                                                     | 401       | 403      | 403      | 403   | 403     | 200      | 403     | 403   |
-| `GET /logistics/incidents`                             | carrier, operator                                            | 401       | 403      | 403      | 403   | 200     | 200      | 403     | 403   |
-| `GET /logistics/orders/candidates`                     | carrier, operator                                            | 401       | 403      | 403      | 403   | 200     | 200      | 403     | 403   |
-| `GET /logistics/trips`                                 | operator                                                     | 401       | 403      | 403      | 403   | 403     | 200      | 403     | 403   |
-| `GET /logistics/trips/{id}`                            | carrier, operator                                            | 401       | 403      | 403      | 403   | 404     | 404      | 403     | 403   |
+| `GET /logistics/carriers`                              | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 200      | 403     | 200   |
+| `GET /logistics/conflicts`                             | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 200      | 403     | 200   |
+| `GET /logistics/incidents`                             | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 200     | 200      | 403     | 200   |
+| `GET /logistics/orders/candidates`                     | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 200     | 200      | 403     | 200   |
+| `GET /logistics/trips`                                 | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 200      | 403     | 200   |
+| `GET /logistics/trips/{id}`                            | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 404     | 404      | 403     | 404   |
 | `GET /logistics/trips/{id}/location-pack`              | en la aplicación                                             | 401       | 404      | 404      | 404   | 404     | 404      | 404     | 404   |
-| `GET /logistics/trips/{id}/stops`                      | carrier, operator                                            | 401       | 403      | 403      | 403   | 404     | 404      | 403     | 403   |
+| `GET /logistics/trips/{id}/stops`                      | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 404     | 404      | 403     | 404   |
 | `GET /logistics/trips/{id}/stops/{stopId}/location`    | en la aplicación                                             | 401       | 404      | 404      | 404   | 404     | 404      | 404     | 404   |
 | `GET /logistics/trips/mine`                            | carrier                                                      | 401       | 403      | 403      | 403   | 200     | 403      | 403     | 403   |
 | `GET /lots`                                            | en la aplicación                                             | 401       | 200      | 200      | 200   | 200     | 200      | 200     | 200   |
@@ -73,16 +73,16 @@ Rutas: 103. Fuera de OpenAPI a propósito: `GET /metrics` (Bearer METRICS_TOKEN;
 | `POST /catalog/product-proposals/{id}/reject`          | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 404      | 403     | 404   |
 | `POST /catalog/products`                               | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 201      | 403     | 201   |
 | `POST /logistics/carrier-profile`                      | carrier                                                      | 401       | 403      | 403      | 403   | 400     | 403      | 403     | 403   |
-| `POST /logistics/incidents`                            | carrier, operator                                            | 401       | 403      | 403      | 403   | 400     | 400      | 403     | 403   |
-| `POST /logistics/incidents/{id}/resolve`               | carrier, operator                                            | 401       | 403      | 403      | 403   | 404     | 404      | 403     | 403   |
+| `POST /logistics/incidents`                            | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 400     | 400      | 403     | 400   |
+| `POST /logistics/incidents/{id}/resolve`               | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 404     | 404      | 403     | 404   |
 | `POST /logistics/stops/{id}/checkins`                  | carrier                                                      | 401       | 403      | 403      | 403   | 400     | 403      | 403     | 403   |
 | `POST /logistics/trips`                                | carrier                                                      | 401       | 403      | 403      | 403   | 400     | 403      | 403     | 403   |
 | `POST /logistics/trips/{id}/assign`                    | carrier                                                      | 401       | 403      | 403      | 403   | 400     | 403      | 403     | 403   |
-| `POST /logistics/trips/{id}/cancel`                    | carrier, operator                                            | 401       | 403      | 403      | 403   | 400     | 400      | 403     | 403   |
+| `POST /logistics/trips/{id}/cancel`                    | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 400     | 400      | 403     | 400   |
 | `POST /logistics/trips/{id}/complete`                  | carrier                                                      | 401       | 403      | 403      | 403   | 400     | 403      | 403     | 403   |
-| `POST /logistics/trips/{id}/reassign`                  | operator                                                     | 401       | 403      | 403      | 403   | 403     | 400      | 403     | 403   |
+| `POST /logistics/trips/{id}/reassign`                  | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 400      | 403     | 400   |
 | `POST /logistics/trips/{id}/start`                     | carrier                                                      | 401       | 403      | 403      | 403   | 400     | 403      | 403     | 403   |
-| `POST /logistics/trips/recommend`                      | carrier, operator                                            | 401       | 403      | 403      | 403   | 200     | 200      | 403     | 403   |
+| `POST /logistics/trips/recommend`                      | carrier, operator, admin                                     | 401       | 403      | 403      | 403   | 200     | 200      | 403     | 200   |
 | `POST /lots`                                           | producer, supplier                                           | 401       | 404      | 409      | 403   | 403     | 403      | 403     | 403   |
 | `POST /lots/{id}/cancel`                               | producer, supplier                                           | 401       | 404      | 404      | 403   | 403     | 403      | 403     | 403   |
 | `POST /lots/{id}/photos`                               | producer, supplier                                           | 401       | 404      | 404      | 403   | 403     | 403      | 403     | 403   |
