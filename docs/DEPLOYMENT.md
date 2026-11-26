@@ -49,7 +49,7 @@ Producción separa quién puede cambiar el esquema de quién solo escribe filas:
 | -------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
 | `tracop_owner` | Solo el ejecutor de migraciones     | Dueño de los schemas; crea tablas, índices y triggers. Sin `SUPERUSER`.                     |
 | `tracop_app`   | API y trabajador                    | `USAGE` en los schemas; `SELECT`, `INSERT`, `UPDATE` y `DELETE` en las tablas y secuencias. |
-| `tracop_app`   | pg-boss, dentro de su propio schema | Dueño de `pgboss`, que crea y migra sus tablas al arrancar.                                 |
+| `tracop_app`   | pg-boss, dentro de su propio schema | Dueño de `pgboss` y `CREATE` sobre la base, porque instala su schema al arrancar.            |
 
 - `apps/api/scripts/provision-db-roles.ts` crea los dos roles y fija sus contraseñas desde `DB_OWNER_PASSWORD` y `DB_APP_PASSWORD`; usa las variables libpq (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`) de la conexión de superusuario, no una URL, porque una contraseña en base64 necesitaría codificarse dentro de ella. Es idempotente.
 - `drizzle/0032_database_roles.sql` concede los privilegios y los aplica también a las tablas futuras (`ALTER DEFAULT PRIVILEGES`). No crea roles, así que no guarda secretos y es inofensiva en desarrollo y en la demo, donde los roles no existen.

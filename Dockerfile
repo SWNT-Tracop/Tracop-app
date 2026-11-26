@@ -36,6 +36,7 @@ ENV NODE_ENV=production APP_VERSION=${APP_VERSION}
 WORKDIR /app
 COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=production-dependencies /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=production-dependencies /app/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY --from=build /app/package.json /app/pnpm-workspace.yaml ./
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/dist ./apps/api/dist

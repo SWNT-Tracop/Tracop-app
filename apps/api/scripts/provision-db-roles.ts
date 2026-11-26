@@ -59,6 +59,9 @@ try {
   }
   // The owner creates the module schemas; the app role only reads and writes their rows.
   await client.query(`GRANT CREATE ON DATABASE "${database}" TO "${OWNER_ROLE}"`);
+  // pg-boss installs its own schema at every start (`CREATE SCHEMA IF NOT EXISTS pgboss`), and
+  // PostgreSQL checks CREATE on the database before noticing the schema is already there.
+  await client.query(`GRANT CREATE ON DATABASE "${database}" TO "${APP_ROLE}"`);
   const jobSchema = await client.query('SELECT 1 FROM pg_namespace WHERE nspname = $1', [
     JOB_SCHEMA,
   ]);
