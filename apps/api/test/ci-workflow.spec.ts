@@ -35,6 +35,29 @@ describe('CI workflow (.github/workflows)', () => {
       .filter((name) => name.endsWith('.yml'))
       .flatMap((name) => [...read(name).matchAll(/uses: (\S+)/g)].map(([, action]) => action!));
     expect(uses.length).toBeGreaterThan(0);
-    expect(uses.filter((action) => !/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/.test(action))).toEqual([]);
+    expect(
+      uses.filter(
+        (action) =>
+          action !== './.github/workflows/deploy.yml' &&
+          !/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/.test(action),
+      ),
+    ).toEqual([]);
+  });
+
+  it('deploys the validated main SHA only, without cancelling a running deployment', () => {
+    const ci = read('ci.yml');
+    expect(ci).toContain(
+      "if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+    );
+    expect(ci).toMatch(/needs: validate\n {4}uses: \.\/\.github\/workflows\/deploy.yml/);
+    expect(ci).toContain('sha: ${{ github.sha }}');
+    expect(ci).toContain("cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}");
+    const deploy = read('deploy.yml');
+    expect(deploy).toContain('workflow_call:');
+    expect(deploy).not.toContain('workflow_dispatch:');
+    expect(deploy).toContain("if: github.ref == 'refs/heads/main'");
+    expect(deploy).toContain('cancel-in-progress: false');
+    expect(deploy).toContain('ref: ${{ inputs.sha }}');
+    expect(deploy).toContain('persist-credentials: false');
   });
 });

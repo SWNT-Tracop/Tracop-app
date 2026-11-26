@@ -20,31 +20,31 @@ export class S3StorageAdapter implements StoragePort {
     const publicEndpoint = env.S3_PUBLIC_ENDPOINT ?? env.S3_ENDPOINT;
     const baseOptions = {
       region: env.S3_REGION,
-      forcePathStyle: true,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE,
       requestChecksumCalculation: 'WHEN_REQUIRED' as const,
     };
-    const apiCredentials = {
-      accessKeyId: env.S3_API_ACCESS_KEY ?? '',
-      secretAccessKey: env.S3_API_SECRET_KEY ?? '',
-    };
-    const policyCredentials = {
-      accessKeyId: env.S3_POLICY_ACCESS_KEY ?? apiCredentials.accessKeyId,
-      secretAccessKey: env.S3_POLICY_SECRET_KEY ?? apiCredentials.secretAccessKey,
-    };
+    const apiCredentials =
+      env.S3_API_ACCESS_KEY && env.S3_API_SECRET_KEY
+        ? { accessKeyId: env.S3_API_ACCESS_KEY, secretAccessKey: env.S3_API_SECRET_KEY }
+        : undefined;
+    const policyCredentials =
+      env.S3_POLICY_ACCESS_KEY && env.S3_POLICY_SECRET_KEY
+        ? { accessKeyId: env.S3_POLICY_ACCESS_KEY, secretAccessKey: env.S3_POLICY_SECRET_KEY }
+        : apiCredentials;
 
     this.apiClient = new S3Client({
       ...baseOptions,
-      credentials: apiCredentials,
+      ...(apiCredentials ? { credentials: apiCredentials } : {}),
       ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT } : {}),
     });
     this.policyClient = new S3Client({
       ...baseOptions,
-      credentials: policyCredentials,
+      ...(policyCredentials ? { credentials: policyCredentials } : {}),
       ...(publicEndpoint ? { endpoint: publicEndpoint } : {}),
     });
     this.downloadClient = new S3Client({
       ...baseOptions,
-      credentials: apiCredentials,
+      ...(apiCredentials ? { credentials: apiCredentials } : {}),
       ...(publicEndpoint ? { endpoint: publicEndpoint } : {}),
     });
   }

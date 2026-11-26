@@ -1,0 +1,27 @@
+# HTTPS in front of an existing AWS demo, without replacing its API or database.
+name: tracop-edge
+
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    environment:
+      TRACOP_DOMAIN: ${TRACOP_DOMAIN:?TRACOP_DOMAIN is required}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
+    name: ${TRACOP_BACKEND_NETWORK:-tracop-aws_default}
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -27,7 +27,7 @@ describeMinio('storage:configure-lifecycle against MinIO (Testcontainers)', () =
       .withPassword('synthetic-root-password')
       .start();
     const url = new URL(container.getConnectionUrl());
-    url.hostname = '127.0.0.1';
+    if (url.hostname === 'localhost') url.hostname = '127.0.0.1';
     endpoint = url.toString().replace(/\/$/, '');
     client = new S3Client({
       endpoint,

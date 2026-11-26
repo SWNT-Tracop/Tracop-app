@@ -240,3 +240,82 @@ El workflow ejecuta `pnpm test` antes del escaneo para generar los reportes LCOV
 - [ADR-022: recomendaciones, sugerencia de precios y alertas](docs/adr/ADR-022.md)
 - [Despliegue, demo y copias de seguridad](docs/DEPLOYMENT.md) · [Revisión de seguridad](docs/SECURITY-REVIEW.md) · [Prueba de carga](docs/LOAD-TEST.md) · [Retención de sync](docs/SYNC-RETENTION.md)
 - [Aviso de privacidad (texto pendiente)](docs/PRIVACY_NOTICE.md)
+
+## Despliegue
+
+La guía operativa completa (perfiles, imagen, copias de seguridad y checklist) está en [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Esta sección resume el despliegue de la **demo para jurados** sobre AWS (cuenta real, free tier).
+
+### Arquitectura objetivo
+
+Una sola instancia **EC2** (t3.small, free tier) con Docker Compose corre API + worker + PostgreSQL en contenedores; la imagen se compila en la propia instancia (**sin ECR**). El almacenamiento de objetos usa **AWS S3, no MinIO**: fotos y comprobantes en un bucket privado con URLs prefirmadas, y la versión web de la app en un bucket público. La infraestructura (EC2, buckets, security group, rol IAM de S3) se define con **Terraform** (`terraform/`).
+
+```mermaid
+flowchart LR
+    subgraph EC2["EC2 — Docker Compose"]
+        API["API NestJS :3100<br/>/health /ready /auth /catalog /sync"]
+        WORKER["Worker<br/>pg-boss + outbox dispatcher"]
+        PG[("PostgreSQL 16<br/>outbox_events · change_log<br/>processed_operations · pg-boss")]
+        API --> PG
+        PG -. outbox .-> WORKER
+    end
+    subgraph AWS["Servicios AWS"]
+        S3M[("S3 · media<br/>fotos y comprobantes")]
+        S3W[("S3 · web<br/>Flutter Web")]
+    end
+    API -- StoragePort --> S3M
+```
+
+**Piezas clave**
+
+- **Cliente grueso** (app móvil): escribe en SQLite local y encola operaciones con `opId`; al reconectar hace `POST /sync/push` y `GET /sync/pull` (ver [MOBILE-INTEGRATION](docs/MOBILE-INTEGRATION.md)).
+- **Cola del lado del servidor**: el outbox (`outbox_events`) y pg-boss alimentan al worker, que expira lotes/reservas, despacha notificaciones y liquida pagos.
+- **Descarga**: `GET /sync/pull?cursor=seq` entrega los cambios de `change_log` desde el cursor; el cliente los aplica a SQLite.
+- **Storage en S3**: la API ya trae `S3StorageAdapter`; se configura con `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION` y las credenciales `S3_API_*` / `S3_POLICY_*`. El contenedor MinIO del demo local es solo para desarrollo; en AWS no se arranca.
+  > El estilo de direccionamiento se controla con `S3_FORCE_PATH_STYLE` (por defecto `true`, para MinIO). En AWS S3 se usa `false` (estilo virtual-hosted), ya configurado en `docker-compose.aws.yml`.
+
+### Pasos (demo para jurados)
+
+Todo se levanta con Terraform desde [`terraform/`](terraform/README.md): EC2 (imagen compilada en la instancia, sin ECR), buckets S3 (media y web), security group, rol IAM de S3 y clave SSH. No hay que crear recursos a mano.
+
+```bash
+# 1) Credenciales de AWS en la máquina (cuenta real)
+aws configure
+
+# 2) Aplicar
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+```bash
+# 3) Guardar la clave SSH y obtener la URL de la API
+terraform output -raw ssh_private_key_pem > tracop.pem
+chmod 600 tracop.pem
+terraform output -raw api_url
+```
+
+```bash
+# 4) OTP de los usuarios sintéticos (+573000000001..07, uno por rol)
+ssh -i tracop.pem ubuntu@$(terraform output -raw ssh_public_ip) \
+  'cd /opt/tracop && docker compose -f docker-compose.aws.yml --env-file .env.demo logs api'
+```
+
+```bash
+# 5) Verificar salud y disponibilidad
+curl -fsS "$(terraform output -raw api_url)/health"
+curl -fsS "$(terraform output -raw api_url)/ready"
+```
+
+El perfil `demo` usa solo datos sintéticos y el OTP se imprime en los logs del API para entrar sin Telegram real. El path de S3 contra AWS real no está verificado (ver [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)); quedó habilitado con `S3_FORCE_PATH_STYLE=false` y credenciales por instance role.
+
+> **Sin dominio** se usa HTTP; la web y la API deben compartir esquema para evitar *mixed content*. El bootstrap del primer arranque tarda 5–10 min (instala Docker, clona y compila todo).
+
+### Pipeline (CI/CD)
+
+- `.github/workflows/ci.yml` corre lint, typecheck, test y build en cada push/PR.
+- `.github/workflows/deploy.yml` actualiza la EC2 por SSH (`git pull` + build + `up -d`), disparo manual.
+
+### Ajustes posteriores
+
+1. **CORS de la web**: para que la Flutter Web funcione desde el navegador, fijá `CORS_ALLOWED_ORIGINS` en la API con el origen que devuelve `terraform output -raw web_endpoint`. El APK no necesita CORS.

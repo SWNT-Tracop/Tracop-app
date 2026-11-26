@@ -4,10 +4,10 @@ export const assistantMessages = {
   notProvider: 'Solo los productores y proveedores pueden ofrecer lotes por aquí.',
   noProfile: 'Antes de ofrecer lotes, completa tu perfil de proveedor en la app TRACOP.',
   consentRequest:
-    'Para entender tus mensajes uso un asistente de inteligencia artificial de un proveedor externo. ' +
-    'Solo le envío el texto de tu oferta (nunca tu teléfono, dirección ni ubicación exacta) y tú ' +
-    'siempre confirmas antes de publicar. ¿Aceptas? Si no, te guío paso a paso sin IA. ' +
-    '[Texto del aviso pendiente de aprobación legal]',
+    'Demo TRACOP — aviso de IA provisional (v0-draft). Si aceptas, enviamos el texto de tu oferta ' +
+    'y nombres de productos a un proveedor externo de IA (Google Gemini en esta demo) para preparar un borrador. ' +
+    'No incluyas datos personales, documentos ni información confidencial. La respuesta puede tener errores: ' +
+    'revisa y confirma antes de publicar. Puedes seguir sin IA y retirar el permiso con /ia. ¿Aceptas?',
   consentAccepted:
     'Gracias. Escríbeme tu oferta, por ejemplo: «tengo 2 bultos de papa criolla a 80 mil el bulto para el viernes».',
   consentDeclined: 'Entendido, seguimos sin IA. Te pregunto los datos uno por uno.',
