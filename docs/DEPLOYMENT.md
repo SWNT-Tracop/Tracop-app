@@ -31,17 +31,33 @@ pnpm demo:down    # detiene; DEMO_WIPE=1 pnpm demo:down también borra los volú
 
 ## Imagen
 
-`Dockerfile` en dos etapas sobre `node:22.23.1-bookworm-slim`. Construye contracts y la API, y en ejecución corre como el usuario `node`, nunca como root. La imagen **no contiene secretos**: todo llega por el entorno. La misma imagen sirve para:
+`Dockerfile` en tres etapas sobre `node:22.23.1-bookworm-slim`: construcción, dependencias de producción y ejecución. La etapa final copia solo `dist/`, `drizzle/` y las dependencias de producción (sin `jest`, `tsx`, `drizzle-kit` ni `eslint`), corre como el usuario `node`, nunca como root, y no contiene secretos: todo llega por el entorno. La misma imagen sirve para:
 
-| Proceso     | Comando                                                                                 |
-| ----------- | --------------------------------------------------------------------------------------- |
-| API         | `node dist/main.js` (puerto 3000)                                                       |
-| Trabajador  | `node dist/worker.js` (uno o más; latido en `shared.worker_heartbeats`)                 |
-| Migraciones | `npx tsx drizzle/migrate.ts`, antes de cada versión, desde una base vacía o la anterior |
+| Proceso     | Comando                                                        |
+| ----------- | -------------------------------------------------------------- |
+| API         | `node dist/main.js` (puerto 3000)                              |
+| Trabajador  | `node dist/worker.js` (uno o más; latido en `shared.worker_heartbeats`) |
+| Migraciones | `node dist/drizzle/migrate.js`, antes de cada versión          |
+
+`APP_VERSION` (por defecto `0.0.0-dev`) se pasa como argumento de construcción y queda en la etiqueta `org.opencontainers.image.version`: `docker inspect` dice qué versión está desplegada.
+
+## Roles de base de datos
+
+Producción separa quién puede cambiar el esquema de quién solo escribe filas:
+
+| Rol             | Lo usa                                   | Privilegios                                                                                  |
+| --------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `tracop_owner`  | Solo el ejecutor de migraciones          | Dueño de los schemas; crea tablas, índices y triggers. Sin `SUPERUSER`.                      |
+| `tracop_app`    | API y trabajador                         | `USAGE` en los schemas; `SELECT`, `INSERT`, `UPDATE` y `DELETE` en las tablas y secuencias.  |
+| `tracop_app`    | pg-boss, dentro de su propio schema      | Dueño de `pgboss`, que crea y migra sus tablas al arrancar.                                  |
+
+- `apps/api/scripts/provision-db-roles.ts` crea los dos roles y fija sus contraseñas desde `DB_OWNER_PASSWORD` y `DB_APP_PASSWORD`; usa las variables libpq (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`) de la conexión de superusuario, no una URL, porque una contraseña en base64 necesitaría codificarse dentro de ella. Es idempotente.
+- `drizzle/0032_database_roles.sql` concede los privilegios y los aplica también a las tablas futuras (`ALTER DEFAULT PRIVILEGES`). No crea roles, así que no guarda secretos y es inofensiva en desarrollo y en la demo, donde los roles no existen.
+- La API y el trabajador usan `DATABASE_URL` (`tracop_app`); las migraciones usan `MIGRATION_DATABASE_URL` (`tracop_owner`). En producción `env.ts` exige la segunda, para que nadie despliegue con un solo rol.
 
 ## Producción (lista de comprobación)
 
-1. **PostgreSQL 16 gestionado**, con TLS. `DATABASE_URL` con un usuario sin permisos de superusuario.
+1. **PostgreSQL 16 gestionado**, con TLS. `DATABASE_URL` con el rol `tracop_app` y `MIGRATION_DATABASE_URL` con `tracop_owner` (ver «Roles de base de datos»).
 2. **Secretos** en el gestor de secretos de la plataforma, nunca en el repositorio ni en la imagen:
    - `JWT_SECRET`, `OTP_HMAC_SECRET` y `RATE_LIMIT_HMAC_SECRET`, de 32 bytes o más;
    - `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET`;
@@ -115,7 +131,10 @@ Si se alcanza el umbral, hay que implementar la compactación diseñada en [SYNC
 
 ## Copias de seguridad
 
-- **Programadas:** en la demo, el servicio `backup` ejecuta `scripts/backup/pg-backup.sh` al arrancar y cada `BACKUP_INTERVAL_SECONDS` (86 400 s). El script hace `pg_dump --format=custom` y escribe en `./backups`, conservando las `BACKUP_KEEP` (7) copias más recientes. En producción, el mismo script se ejecuta desde un cron de la plataforma con las variables `PG*`, y las copias se guardan **fuera** del servidor de base de datos, en un bucket privado con cifrado y su propia retención. Si el PostgreSQL gestionado tiene copias del proveedor, este volcado lógico es la copia independiente.
+- **Programadas:** en la demo, el servicio `backup` ejecuta `scripts/backup/pg-backup.sh` al arrancar y cada `BACKUP_INTERVAL_SECONDS` (86 400 s). El script hace `pg_dump --format=custom` y escribe en `./backups`, conservando las `BACKUP_KEEP` (7) copias más recientes. En producción, `docker-compose.prod.yml` usa el mismo script cada 6 h y añade el servicio `backup-upload`, que sincroniza los volcados a un bucket privado aparte con `scripts/backup/s3-upload-loop.sh`.
+  - El bucket de copias (`tracop-backups-<sufijo>`) tiene cifrado del lado del servidor y una regla de ciclo de vida que borra a los 30 días.
+  - Las credenciales del servicio (`BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_KEY` y `BACKUP_S3_URI`, por ejemplo `s3://tracop-backups-xxxx/prod`) pertenecen a un usuario IAM que solo puede escribir en ese bucket: `s3:PutObject` sobre `arn:aws:s3:::<bucket>/*`. No puede listar, leer ni borrar.
+  - `aws s3 sync` omite lo que ya está subido, así que cada ciclo cuesta una petición `HEAD` por archivo.
 - **Prueba de restauración:**
   - `pnpm backup:restore-check <archivo.dump>` restaura la copia en un PostgreSQL 16 desechable y muestra los recuentos; con `SOURCE_COUNTS`, falla si no coinciden con el origen.
   - `pnpm demo:check` lo hace con una copia recién tomada.
@@ -132,4 +151,4 @@ Si se alcanza el umbral, hay que implementar la compactación diseñada en [SYNC
 ## NO verificado
 
 - El despliegue en una plataforma real: PostgreSQL gestionado, balanceador, gestor de secretos y S3 de producción.
-- El cron de copias en producción y la copia fuera del servidor.
+- El cron de copias en producción y la copia fuera del servidor: `scripts/backup/s3-upload-loop.sh` está escrito pero NO verificado contra un bucket de AWS.
