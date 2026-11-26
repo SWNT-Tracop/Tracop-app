@@ -1,14 +1,24 @@
 # Caddy: TLS automático (Let's Encrypt) delante de la API.
-# Reemplazá <dominio> por el dominio real (ej. api-staging.tracop.co).
+# El dominio no vive en este archivo: se pasa en TRACOP_DOMAIN (por ejemplo
+# api-staging.tracop.co). Si falta, Caddy no arranca, en lugar de servir un dominio equivocado.
 {
-	# Límites de tamaño y tiempo para la API.
+	# Un solo proxy delante de la API: TRUST_PROXY=1 en el entorno de la API.
+	servers {
+		timeouts {
+			read_body 30s
+			read_header 10s
+			write 60s
+			idle 120s
+		}
+	}
+}
+
+{$TRACOP_DOMAIN} {
 	request_body {
 		max_size 10MB
 	}
 
-	<dominio> {
-		reverse_proxy api:3000 {
-			header_up X-Forwarded-Proto https
-		}
+	reverse_proxy api:3000 {
+		header_up X-Forwarded-Proto https
 	}
 }
