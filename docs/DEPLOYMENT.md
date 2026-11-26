@@ -58,7 +58,7 @@ docker compose -f docker-compose.edge.yml up -d
 curl --fail https://tracop.duckdns.org/ready
 ```
 
-Configurar `TRUST_PROXY=1` en el entorno de la API cuando el tráfico llegue por Caddy. Para retirar únicamente el proxy, ejecutar `docker compose -f docker-compose.edge.yml down` sin `--volumes`; los datos de la aplicación y los certificados se conservan. Si cambia la IP pública, actualizar DuckDNS.
+Mientras el puerto 3100 siga público, conservar `TRUST_PROXY=false`: así una conexión directa no puede falsificar su IP con cabeceras reenviadas. En esta demo las solicitudes HTTPS comparten la IP del proxy para los límites. En producción, publicar solo 80/443 y usar `TRUST_PROXY=1`. Para retirar únicamente el proxy, ejecutar `docker compose -f docker-compose.edge.yml down` sin `--volumes`; los datos de la aplicación y los certificados se conservan. Si cambia la IP pública, actualizar DuckDNS.
 
 La imagen compila también el seed y la configuración del ciclo de vida: los servicios `setup` de las demos ejecutan `node dist/drizzle/migrate.js`, `node dist/drizzle/seed.js` y, en la demo con MinIO, `node dist/scripts/configure-storage-lifecycle.js`. No necesitan descargar `tsx` en el servidor.
 
