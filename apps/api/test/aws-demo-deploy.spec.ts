@@ -16,7 +16,7 @@ linuxDescribe('AWS demo deployment recovery', () => {
     root = mkdtempSync(join(tmpdir(), 'tracop-deploy-'));
     mkdirSync(join(root, 'bin'));
     mkdirSync(join(root, 'app'));
-    const mock = `#!/usr/bin/env node
+    const mock = `#!/usr/bin/env -S node --
 const fs = require('node:fs');
 const path = require('node:path');
 const command = path.basename(process.argv[1]);
@@ -24,7 +24,7 @@ const args = process.argv.slice(2);
 fs.appendFileSync(process.env.CALLS, JSON.stringify({command,args})+'\\n');
 const has = x => args.includes(x);
 const fail = phase => { if(process.env.FAIL === phase) process.exit(1); };
-if(command === 'git' && args[0] === 'rev-parse') console.log(process.env.FAIL === 'stale' ? 'b'.repeat(40) : process.env.DEPLOY_SHA);
+if(command === 'git' && args[0] === 'rev-parse') console.log(args[1] === 'HEAD' || process.env.FAIL === 'stale' ? 'b'.repeat(40) : process.env.DEPLOY_SHA);
 if(command === 'curl') console.log(JSON.stringify({status:'ready'}));
 if(command === 'docker') {
   if(args[0] === 'build') fail('build');
@@ -62,6 +62,9 @@ if(command === 'docker') {
       encoding: 'utf8',
       timeout: 20000,
     });
+    if (result.status !== 0 && failure === '') {
+      throw new Error(`Deployment failed (${result.status}): ${result.stderr}`);
+    }
     const calls = readFileSync(join(root, 'calls'), 'utf8')
       .trim()
       .split('\n')
@@ -95,6 +98,10 @@ if(command === 'docker') {
     expect(calls.filter((call) => call.command === 'docker' && call.args.includes('up'))).toEqual(
       [],
     );
+    expect(calls.at(-1)).toEqual({
+      command: 'git',
+      args: ['checkout', '--detach', 'b'.repeat(40)],
+    });
   });
 
   it.each(['activation', 'readiness'])('restores immutable old images when %s fails', (phase) => {

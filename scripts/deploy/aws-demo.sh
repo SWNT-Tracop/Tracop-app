@@ -21,6 +21,7 @@ if [[ "$(git rev-parse origin/main)" != "$DEPLOY_SHA" ]]; then
 fi
 
 release=$(mktemp -d "$state/release-${DEPLOY_SHA}.XXXXXX")
+previous_sha=$(git rev-parse HEAD)
 compose=(docker compose --project-name tracop-aws --env-file .env.demo -f docker-compose.aws.yml)
 legacy="${LEGACY_OVERRIDE:-/opt/tracop-edge/runtime-image.yml}"
 [[ ! -f "$legacy" ]] || compose+=(-f "$legacy")
@@ -44,6 +45,7 @@ rollback_on_error() {
     "${rollback[@]}" up -d --no-deps --no-build --wait --wait-timeout 180 api worker ||
       echo 'Rollback failed: operator intervention required' >&2
   fi
+  git checkout --detach "$previous_sha" || echo 'Could not restore repository checkout' >&2
   echo "Deployment failed; private recovery files: $release" >&2
   exit "$result"
 }
