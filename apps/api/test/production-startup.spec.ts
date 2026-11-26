@@ -17,6 +17,8 @@ const COMPLETE_PRODUCTION = {
   NODE_ENV: 'production',
   APP_PROFILE: 'production',
   DATABASE_URL: 'postgres://tracop@db.internal.test/tracop',
+  MIGRATION_DATABASE_URL: 'postgres://tracop_owner@db.internal.test/tracop',
+  PRIVACY_POLICY_VERSION: 'v1',
   JWT_SECRET: secret(),
   OTP_HMAC_SECRET: secret(),
   RATE_LIMIT_HMAC_SECRET: secret(),
@@ -86,4 +88,37 @@ describe('production startup (env.ts)', () => {
     only({ ...COMPLETE_PRODUCTION, S3_ENDPOINT: 'http://s3.internal.test' });
     expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/https/);
   });
+
+  it('refuses draft legal texts and a single database role in production', () => {
+    only({ ...COMPLETE_PRODUCTION, PRIVACY_POLICY_VERSION: 'v0-draft' });
+    expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
+    only({ ...COMPLETE_PRODUCTION, AI_CONSENT_VERSION: 'v0-draft' });
+    expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
+    const { MIGRATION_DATABASE_URL: ownerUrl, ...withoutOwner } = COMPLETE_PRODUCTION;
+    expect(ownerUrl).toContain('tracop_owner');
+    only(withoutOwner);
+    expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/MIGRATION_DATABASE_URL/);
+  });
+
+  it.each(['anthropic', 'google'])(
+    'accepts %s with the production deployment requirements',
+    (provider) => {
+      only({
+        ...COMPLETE_PRODUCTION,
+        AI_ENABLED: 'true',
+        LLM_PROVIDER: provider,
+        LLM_MODEL: 'synthetic-model',
+        LLM_API_KEY: secret(),
+        AI_CONSENT_VERSION: 'ai-v1',
+      });
+      expect(loadAppEnvironment(NO_ENV_FILE)).toMatchObject({
+        APP_PROFILE: 'production',
+        AI_ENABLED: true,
+        LLM_PROVIDER: provider,
+        MIGRATION_DATABASE_URL: COMPLETE_PRODUCTION.MIGRATION_DATABASE_URL,
+      });
+      process.env.AI_CONSENT_VERSION = 'v0-draft';
+      expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
+    },
+  );
 });
