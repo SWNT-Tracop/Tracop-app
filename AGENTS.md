@@ -146,7 +146,7 @@ TRACOP es una plataforma móvil de abastecimiento agropecuario que conecta **pro
 | BD local móvil             | expo-sqlite + outbox propio de sincronización                                                             |
 | Backoffice                 | React + Vite + TypeScript, TanStack Query, Tailwind                                                       |
 | Bot de mensajería          | grammY (Telegram, webhook). WhatsApp Cloud API después                                                    |
-| IA                         | Anthropic API tras `LLMPort`, salida estructurada validada                                                |
+| IA                         | Anthropic o Google Gemini tras `LLMPort` (`LLM_PROVIDER`), salida estructurada validada                   |
 | Almacenamiento de archivos | S3-compatible (Supabase Storage / MinIO en local)                                                         |
 | Push / SMS                 | FCM / proveedor SMS tras `NotificationPort`                                                               |
 | Logging                    | pino (JSON); OpenTelemetry cuando haya despliegue real                                                    |
@@ -248,20 +248,20 @@ PUERTOS      MessagingPort · NotificationPort · PaymentPort · LLMPort
              PriceReferencePort · StoragePort · MapsPort · Clock · EventBus
    │
 ADAPTADORES  TelegramAdapter (demo) → WhatsAppAdapter · FcmAdapter · SmsAdapter
-DE SALIDA    ManualTransferAdapter → pasarela · AnthropicLLMAdapter · Drizzle repos
+DE SALIDA    ManualTransferAdapter → pasarela · AnthropicLLMAdapter · GeminiLLMAdapter · Drizzle repos
 ```
 
 ### Puertos principales
 
-| Puerto               | Responsabilidad                                           | Adaptadores                                                                                |
-| -------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `MessagingPort`      | Enviar/recibir mensajes, botones, audio, fotos, ubicación | `TelegramAdapter` (ahora), `WhatsAppAdapter` (después), `InMemoryMessagingAdapter` (tests) |
-| `NotificationPort`   | Entregar una notificación por un canal                    | `MessagingNotifier`, `FcmAdapter`, `SmsAdapter`, `EmailAdapter`                            |
-| `PaymentPort`        | Registrar/verificar pagos                                 | `ManualTransferAdapter` (piloto), pasarela (futuro)                                        |
-| `LLMPort`            | Extraer datos estructurados de texto/audio/foto           | `AnthropicLLMAdapter`, `FakeLLMAdapter` (tests)                                            |
-| `PriceReferencePort` | Precios de referencia de mercado                          | adaptador de fuente de datos, `StaticPriceAdapter`                                         |
-| `StoragePort`        | Guardar fotos y comprobantes                              | `S3StorageAdapter`, `InMemoryStorageAdapter` (tests); en `shared/`, vía `StorageModule`    |
-| `MapsPort`           | Distancias y geocodificación                              | adaptador de mapas, `FakeMapsAdapter`                                                      |
+| Puerto               | Responsabilidad                                           | Adaptadores                                                                                          |
+| -------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `MessagingPort`      | Enviar/recibir mensajes, botones, audio, fotos, ubicación | `TelegramAdapter` (ahora), `WhatsAppAdapter` (después), `InMemoryMessagingAdapter` (tests)           |
+| `NotificationPort`   | Entregar una notificación por un canal                    | `MessagingNotifier`, `FcmAdapter`, `SmsAdapter`, `EmailAdapter`                                      |
+| `PaymentPort`        | Registrar/verificar pagos                                 | `ManualTransferAdapter` (piloto), pasarela (futuro)                                                  |
+| `LLMPort`            | Extraer datos estructurados de texto/audio/foto           | `AnthropicLLMAdapter`, `GeminiLLMAdapter` ([ADR-023](docs/adr/ADR-023.md)), `FakeLLMAdapter` (tests) |
+| `PriceReferencePort` | Precios de referencia de mercado                          | adaptador de fuente de datos, `StaticPriceAdapter`                                                   |
+| `StoragePort`        | Guardar fotos y comprobantes                              | `S3StorageAdapter`, `InMemoryStorageAdapter` (tests); en `shared/`, vía `StorageModule`              |
+| `MapsPort`           | Distancias y geocodificación                              | adaptador de mapas, `FakeMapsAdapter`                                                                |
 
 ### `InboundMessage` (formato normalizado)
 
@@ -765,6 +765,7 @@ La fuente de verdad es el esquema zod de `apps/api/src/shared/infra/env.ts` (val
 | 020 | Calificaciones solo del comprador con pago verificado; verificación manual    | Colusión comprador-proveedor posible; sin documentos (§23.8)                                                       |
 | 021 | Asistente de IA por Telegram: solo extrae; publica la aplicación al confirmar | Precisión real solo medible fuera de CI; límite por minuto por proceso                                             |
 | 022 | Recomendaciones y precios por reglas y percentiles; DANE-SIPSA por CSV manual | Formato XLSX sin verificar; uso comercial de datos DANE por confirmar                                              |
+| 023 | Google Gemini como segundo proveedor de IA tras `LLMPort`                     | Plan gratuito solo con datos sintéticos (usa los textos); precisión medida aparte                                  |
 
 ---
 
