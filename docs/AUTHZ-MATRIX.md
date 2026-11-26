@@ -66,7 +66,7 @@ Rutas: 103. Fuera de OpenAPI a propósito: `GET /metrics` (Bearer METRICS_TOKEN;
 | `POST /auth/otp/request`                               | pública                                                      | 201       | 429      | 429      | 429   | 429     | 429      | 429     | 429   |
 | `POST /auth/otp/verify`                                | pública                                                      | 401       | 401      | 401      | 401   | 401     | 401      | 401     | 401   |
 | `POST /auth/refresh`                                   | pública                                                      | 401       | 401      | 401      | 401   | 401     | 401      | 401     | 401   |
-| `POST /auth/register`                                  | pública                                                      | 201       | 201      | 201      | 201   | 201     | 201      | 201     | 201   |
+| `POST /auth/register`                                  | pública                                                      | 201       | 429      | 429      | 429   | 429     | 429      | 429     | 429   |
 | `POST /catalog/categories`                             | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 201      | 403     | 201   |
 | `POST /catalog/product-proposals`                      | producer, supplier                                           | 401       | 201      | 409      | 403   | 403     | 403      | 403     | 403   |
 | `POST /catalog/product-proposals/{id}/approve`         | operator, admin                                              | 401       | 403      | 403      | 403   | 403     | 404      | 403     | 404   |

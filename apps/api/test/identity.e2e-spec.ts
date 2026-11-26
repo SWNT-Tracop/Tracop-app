@@ -242,6 +242,19 @@ describePostgres('identity authentication flow (PostgreSQL Testcontainers)', () 
     expect(second.status).toBe(429);
   });
 
+  it('refuses a registration that hits the code limit with 429 instead of a silent ok', async () => {
+    const phone = nextPhone();
+    await request(app.getHttpServer()).post('/auth/otp/request').send({ phone }).expect(201);
+    const limited = await register(phone);
+    expect(limited.response.status).toBe(429);
+    expect(Number(limited.response.headers['retry-after'])).toBeGreaterThan(0);
+    const created = await pool.query<{ count: string }>(
+      'SELECT count(*) FROM identity.users WHERE phone = $1',
+      [`+57${phone}`],
+    );
+    expect(created.rows[0]?.count).toBe('0');
+  });
+
   it('rejects invalid phone syntax and requests OTP generically for unknown numbers', async () => {
     await request(app.getHttpServer())
       .post('/auth/otp/request')
