@@ -23,6 +23,11 @@ const domainStatus: Record<string, number> = {
   invalid_order_status: HttpStatus.CONFLICT,
   // Conflicts with the current state of the resource; the contract documents 409 for them.
   invalid_transition: HttpStatus.CONFLICT,
+  role_not_changeable: HttpStatus.CONFLICT,
+  same_role: HttpStatus.CONFLICT,
+  own_account: HttpStatus.CONFLICT,
+  staff_account: HttpStatus.CONFLICT,
+  invalid_reason: HttpStatus.BAD_REQUEST,
   quote_expired: HttpStatus.CONFLICT,
   lot_unavailable: HttpStatus.CONFLICT,
   reservation_conflict: HttpStatus.CONFLICT,

@@ -128,6 +128,20 @@ export class MemorySessionRepository implements SessionRepository {
   async update(session: SessionProps): Promise<void> {
     this.state.sessions.set(session.id, session);
   }
+  async revokeAllForUser(
+    userId: string,
+    now: Date,
+    reason: string,
+  ): Promise<readonly SessionProps[]> {
+    const sessions = [...this.state.sessions.values()].filter(
+      (session) => session.userId === userId && !session.revokedAt,
+    );
+    for (const session of sessions) {
+      session.revokedAt = now;
+      session.revokedReason = reason;
+    }
+    return sessions;
+  }
   async revokeFamily(
     familyId: string,
     now: Date,

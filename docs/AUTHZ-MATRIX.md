@@ -6,7 +6,7 @@ Cada celda es el estado HTTP de una llamada con identificadores aleatorios (UUID
 
 Columna «Roles»: la lista de `@Roles` (la comprueba el guard antes de leer el cuerpo); «en la aplicación» cuando la comprueba el caso de uso; «pública» para las rutas sin sesión de la lista blanca. La autorización por objeto (usuario A frente a usuario B del mismo rol) está en `apps/api/test/authz-objects.e2e-spec.ts`.
 
-Rutas: 103. Fuera de OpenAPI a propósito: `GET /metrics` (Bearer METRICS_TOKEN; 404 without it, so its existence is not revealed); `POST /webhooks/telegram` (X-Telegram-Bot-Api-Secret-Token header).
+Rutas: 107. Fuera de OpenAPI a propósito: `GET /metrics` (Bearer METRICS_TOKEN; 404 without it, so its existence is not revealed); `POST /webhooks/telegram` (X-Telegram-Bot-Api-Secret-Token header).
 
 | Ruta                                                   | Roles                                                        | anonymous | producer | supplier | buyer | carrier | operator | finance | admin |
 | ------------------------------------------------------ | ------------------------------------------------------------ | --------- | -------- | -------- | ----- | ------- | -------- | ------- | ----- |
@@ -52,6 +52,7 @@ Rutas: 103. Fuera de OpenAPI a propósito: `GET /metrics` (Bearer METRICS_TOKEN;
 | `GET /ready`                                           | pública                                                      | 503       | 503      | 503      | 503   | 503     | 503      | 503     | 503   |
 | `GET /recommendations/lots`                            | en la aplicación                                             | 401       | 403      | 403      | 200   | 403     | 403      | 403     | 403   |
 | `GET /settlements`                                     | en la aplicación                                             | 401       | 200      | 200      | 403   | 200     | 200      | 200     | 200   |
+| `GET /staff/users`                                     | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 403      | 403     | 400   |
 | `GET /sync/pull`                                       | en la aplicación                                             | 401       | 200      | 200      | 200   | 200     | 200      | 200     | 200   |
 | `GET /trust/me`                                        | en la aplicación                                             | 401       | 200      | 200      | 403   | 200     | 403      | 403     | 403   |
 | `GET /trust/staff/subjects/{userId}`                   | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 200      | 403     | 200   |
@@ -102,6 +103,9 @@ Rutas: 103. Fuera de OpenAPI a propósito: `GET /metrics` (Bearer METRICS_TOKEN;
 | `POST /pricing/mappings`                               | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 404      | 403     | 404   |
 | `POST /settlements/{id}/paid`                          | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 404      | 404     | 404   |
 | `POST /staff/users/{userId}/channels/{channel}/unlink` | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 404      | 403     | 404   |
+| `POST /staff/users/{userId}/reactivate`                | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 403      | 403     | 404   |
+| `POST /staff/users/{userId}/role`                      | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 403      | 403     | 404   |
+| `POST /staff/users/{userId}/suspend`                   | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 403      | 403     | 404   |
 | `POST /sync/push`                                      | en la aplicación                                             | 401       | 201      | 201      | 201   | 201     | 201      | 201     | 201   |
 | `POST /trust/ratings`                                  | en la aplicación                                             | 401       | 403      | 403      | 404   | 403     | 403      | 403     | 403   |
 | `POST /trust/staff/ratings/{id}/hide`                  | en la aplicación                                             | 401       | 403      | 403      | 403   | 403     | 404      | 403     | 404   |

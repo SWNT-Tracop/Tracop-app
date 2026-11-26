@@ -197,6 +197,7 @@ export class DrizzleUserRepository implements UserRepository {
       .current()
       .update(users)
       .set({
+        role: user.role,
         fullName: user.fullName,
         locale: user.locale,
         status: user.status,
@@ -305,6 +306,19 @@ export class DrizzleSessionRepository implements SessionRepository {
       .update(sessions)
       .set({ revokedAt: now, revokedReason: reason })
       .where(and(eq(sessions.familyId, familyId), isNull(sessions.revokedAt)))
+      .returning();
+    return rows.map(mapSession);
+  }
+  async revokeAllForUser(
+    userId: string,
+    now: Date,
+    reason: string,
+  ): Promise<readonly SessionProps[]> {
+    const rows = await this.database
+      .current()
+      .update(sessions)
+      .set({ revokedAt: now, revokedReason: reason })
+      .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)))
       .returning();
     return rows.map(mapSession);
   }
