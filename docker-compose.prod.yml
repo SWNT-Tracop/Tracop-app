@@ -5,7 +5,7 @@
 #   - .env (600, fuera del repo) con los secretos de producción: DATABASE_URL (rol tracop_app),
 #     MIGRATION_DATABASE_URL (rol tracop_owner), DB_OWNER_PASSWORD, DB_APP_PASSWORD y
 #     DB_SUPERUSER_PASSWORD.
-#   - ./Caddyfile con el dominio real.
+#   - ./Caddyfile, que lee el dominio de TRACOP_DOMAIN (no lo guarda en el repositorio).
 name: tracop-prod
 
 services:

@@ -49,7 +49,7 @@ Producción separa quién puede cambiar el esquema de quién solo escribe filas:
 | -------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
 | `tracop_owner` | Solo el ejecutor de migraciones     | Dueño de los schemas; crea tablas, índices y triggers. Sin `SUPERUSER`.                     |
 | `tracop_app`   | API y trabajador                    | `USAGE` en los schemas; `SELECT`, `INSERT`, `UPDATE` y `DELETE` en las tablas y secuencias. |
-| `tracop_app`   | pg-boss, dentro de su propio schema | Dueño de `pgboss` y `CREATE` sobre la base, porque instala su schema al arrancar.            |
+| `tracop_app`   | pg-boss, dentro de su propio schema | Dueño de `pgboss` y `CREATE` sobre la base, porque instala su schema al arrancar.           |
 
 - `apps/api/scripts/provision-db-roles.ts` crea los dos roles y fija sus contraseñas desde `DB_OWNER_PASSWORD` y `DB_APP_PASSWORD`; usa las variables libpq (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`) de la conexión de superusuario, no una URL, porque una contraseña en base64 necesitaría codificarse dentro de ella. Es idempotente.
 - `drizzle/0032_database_roles.sql` concede los privilegios y los aplica también a las tablas futuras (`ALTER DEFAULT PRIVILEGES`). No crea roles, así que no guarda secretos y es inofensiva en desarrollo y en la demo, donde los roles no existen.
@@ -76,6 +76,17 @@ Producción separa quién puede cambiar el esquema de quién solo escribe filas:
    4. `pnpm telegram:set-webhook`, que registra `message` y `callback_query`.
    5. `pnpm storage:configure-lifecycle`.
    6. `pnpm storage:configure-cors` si el S3 lo admite.
+
+### Secuencia con `docker-compose.prod.yml`
+
+1. Copiar al servidor `docker-compose.prod.yml`, `Caddyfile` y `scripts/backup/`, y crear `.env` con permisos `600` fuera del repositorio:
+   - `TRACOP_DOMAIN` con el dominio público de la API; Caddy no arranca sin él.
+   - `DB_SUPERUSER_PASSWORD`, `DB_OWNER_PASSWORD` y `DB_APP_PASSWORD` con `openssl rand -hex 32` cada una. Hex y no base64: las contraseñas van dentro de `DATABASE_URL` y `MIGRATION_DATABASE_URL`, y un `+` o `/` exigiría codificarlas.
+   - `DATABASE_URL=postgres://tracop_app:<app>@db:5432/tracop` y `MIGRATION_DATABASE_URL=postgres://tracop_owner:<owner>@db:5432/tracop`.
+   - `BACKUP_S3_URI` y las claves `BACKUP_S3_*` de un usuario que solo pueda escribir en el bucket de copias.
+2. `docker compose -f docker-compose.prod.yml run --rm migrate`: crea o rota los dos roles y aplica las migraciones como `tracop_owner`. Es idempotente.
+3. `docker compose -f docker-compose.prod.yml up -d --wait`: base, migración, API, trabajador, Caddy y las copias. `GET /ready` responde `database` y `worker` en `ok`.
+4. Cada versión: `PUBLIC_URL=https://api.<dominio> SSH_HOST=<host> SSH_USER=<usuario> ./scripts/deploy/deploy.sh v0.1.0`. El script toma una copia previa, descarga la imagen, migra, arranca y verifica `/health` y `/ready` en la URL pública.
 5. **Comprobaciones:**
    - el balanceador usa `GET /health` como comprobación de vida y `GET /ready` como disponibilidad;
    - Prometheus raspa `GET /metrics` con `Authorization: Bearer <METRICS_TOKEN>`.
