@@ -179,7 +179,7 @@ const envSchema = z.object({
   // AI assistant. Off by default; with AI_ENABLED=true the provider, model, key and consent
   // version are required (no default model). Limits and retention are PROVISIONAL.
   AI_ENABLED: booleanFromString.default(false),
-  LLM_PROVIDER: optionalText(z.enum(['anthropic'])),
+  LLM_PROVIDER: optionalText(z.enum(['anthropic', 'google'])),
   LLM_MODEL: optionalText(z.string().min(1).max(100)),
   LLM_API_KEY: optionalText(z.string().min(1)),
   LLM_BASE_URL: optionalText(z.string().url()),

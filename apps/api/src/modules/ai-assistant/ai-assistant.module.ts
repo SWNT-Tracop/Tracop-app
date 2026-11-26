@@ -4,13 +4,13 @@ import type { AppEnvironment } from '../../shared/infra/env.js';
 import { APP_CLOCK, APP_ENVIRONMENT, APP_LOGGER, UNIT_OF_WORK } from '../../shared/infra/tokens.js';
 import type { UnitOfWork } from '../../shared/infra/unit-of-work.js';
 import type { Clock } from '../../shared/kernel/clock.js';
-import { AnthropicLLMAdapter } from './adapters/out/anthropic-llm.adapter.js';
 import {
   DrizzleDraftRepository,
   DrizzleInboxRepository,
   DrizzleUsageRepository,
 } from './adapters/out/drizzle-assistant-repositories.js';
 import { FakeLLMAdapter } from './adapters/out/fake-llm.adapter.js';
+import { createLLMAdapter } from './adapters/out/llm-adapter-factory.js';
 import { AiGateway, MinuteRateLimiter } from './application/ai-gateway.js';
 import {
   AssistantInbox,
@@ -56,7 +56,8 @@ import type {
       inject: [APP_ENVIRONMENT, APP_LOGGER],
       useFactory: (environment: AppEnvironment, logger: pino.Logger): LLMPort =>
         environment.AI_ENABLED && environment.LLM_API_KEY && environment.LLM_MODEL
-          ? new AnthropicLLMAdapter({
+          ? createLLMAdapter({
+              provider: environment.LLM_PROVIDER ?? 'anthropic',
               apiKey: environment.LLM_API_KEY,
               model: environment.LLM_MODEL,
               timeoutMs: environment.LLM_TIMEOUT_MS,
