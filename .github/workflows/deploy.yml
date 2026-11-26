@@ -11,6 +11,12 @@ name: Deploy (CD)
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to deploy
+        required: true
+        default: deploy/integrated-gemini
+        type: string
 
 jobs:
   deploy:
@@ -23,10 +29,14 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DEPLOY_REF
           script: |
             set -e
             cd /opt/tracop
-            git fetch origin && git checkout main && git pull --ff-only
+            git fetch origin
+            git checkout --detach "$(git rev-parse --verify "origin/${DEPLOY_REF}^{commit}" 2>/dev/null || git rev-parse --verify "${DEPLOY_REF}^{commit}")"
             docker compose -f docker-compose.aws.yml --env-file .env.demo up -d --build --wait api worker
-            curl -fsS http://127.0.0.1:3000/health
-            curl -fsS http://127.0.0.1:3000/ready | grep -q '"status":"ready"'
+            curl -fsS http://127.0.0.1:3100/health
+            curl -fsS http://127.0.0.1:3100/ready | grep -q '"status":"ready"'
+        env:
+          DEPLOY_REF: ${{ inputs.ref }}

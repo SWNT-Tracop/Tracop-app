@@ -7,5 +7,10 @@
     "declaration": false,
     "types": ["node"]
   },
-  "include": ["drizzle/migrate.ts", "scripts/provision-db-roles.ts"]
+  "include": [
+    "drizzle/migrate.ts",
+    "drizzle/seed.ts",
+    "scripts/provision-db-roles.ts",
+    "scripts/configure-storage-lifecycle.ts"
+  ]
 }

@@ -99,4 +99,26 @@ describe('production startup (env.ts)', () => {
     only(withoutOwner);
     expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/MIGRATION_DATABASE_URL/);
   });
+
+  it.each(['anthropic', 'google'])(
+    'accepts %s with the production deployment requirements',
+    (provider) => {
+      only({
+        ...COMPLETE_PRODUCTION,
+        AI_ENABLED: 'true',
+        LLM_PROVIDER: provider,
+        LLM_MODEL: 'synthetic-model',
+        LLM_API_KEY: secret(),
+        AI_CONSENT_VERSION: 'ai-v1',
+      });
+      expect(loadAppEnvironment(NO_ENV_FILE)).toMatchObject({
+        APP_PROFILE: 'production',
+        AI_ENABLED: true,
+        LLM_PROVIDER: provider,
+        MIGRATION_DATABASE_URL: COMPLETE_PRODUCTION.MIGRATION_DATABASE_URL,
+      });
+      process.env.AI_CONSENT_VERSION = 'v0-draft';
+      expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
+    },
+  );
 });

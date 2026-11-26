@@ -48,7 +48,7 @@ services:
 
   setup:
     <<: *app
-    command: sh -c "npx tsx drizzle/migrate.ts && npx tsx drizzle/seed.ts"
+    command: sh -c "node dist/drizzle/migrate.js && node dist/drizzle/seed.js"
     restart: 'no'
     depends_on:
       db: { condition: service_healthy }

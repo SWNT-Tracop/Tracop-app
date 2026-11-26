@@ -66,8 +66,8 @@ services:
   setup:
     <<: *app
     command: >-
-      sh -c "npx tsx drizzle/migrate.ts && npx tsx drizzle/seed.ts &&
-      npx tsx scripts/configure-storage-lifecycle.ts"
+      sh -c "node dist/drizzle/migrate.js && node dist/drizzle/seed.js &&
+      node dist/scripts/configure-storage-lifecycle.js"
     restart: 'no'
     depends_on:
       db: { condition: service_healthy }
