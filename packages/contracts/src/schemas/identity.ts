@@ -87,3 +87,28 @@ export const upsertProviderProfileSchema = z
     description: z.string().trim().max(1000),
   })
   .strict();
+
+/** Roles an admin may move a marketplace account between (never staff roles). */
+export const marketplaceRoleSchema = z.enum(['producer', 'supplier', 'buyer', 'carrier']);
+
+export const staffUserLookupQuerySchema = z.object({ phone: z.string().min(1).max(32) }).strict();
+
+const staffReason = z.string().trim().min(3).max(300);
+
+export const changeUserRoleSchema = z
+  .object({ role: marketplaceRoleSchema, reason: staffReason })
+  .strict();
+
+export const staffAccountReasonSchema = z.object({ reason: staffReason }).strict();
+
+export const staffUserViewSchema = z
+  .object({
+    id: z.string().uuid(),
+    role: userRoleSchema,
+    status: z.enum(['pending_verification', 'active', 'suspended']),
+    fullName: z.string(),
+    phoneLast4: z.string().regex(/^\d{4}$/),
+  })
+  .strict();
+
+export type StaffUserView = z.infer<typeof staffUserViewSchema>;
