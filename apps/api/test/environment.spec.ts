@@ -385,7 +385,8 @@ describe('runtime environment validation', () => {
     const production = {
       NODE_ENV: 'production',
       APP_PROFILE: 'production',
-      DATABASE_URL: 'postgres://localhost/test',
+      DATABASE_URL: 'postgres://tracop_app@localhost/test',
+      MIGRATION_DATABASE_URL: 'postgres://tracop_owner@localhost/test',
       ...STRONG,
       OTP_SENDER: 'telegram',
       TELEGRAM_MODE: 'webhook',
