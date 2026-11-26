@@ -314,6 +314,37 @@ describe('identity application use cases with in-memory ports', () => {
     harness.clock.advance(61);
     expect((await harness.service.requestOtp(phoneValue, '10.0.0.1')).ok).toBe(false);
   });
+
+  it('answers registration with the bot link that delivers the code', async () => {
+    const harness = createHarness();
+    expect(unwrap(await harness.registration('3001234567'))).toEqual({
+      message: 'Si el registro puede continuar, recibirás un código.',
+      botLink: 'https://t.me/tracop_test_bot?start=link',
+    });
+  });
+
+  it('issues a verifiable code for a newly linked chat right after registration, without sending it', async () => {
+    const harness = createHarness();
+    const phoneValue = '3005551234';
+    unwrap(await harness.registration(phoneValue));
+    const sentByRegistration = harness.sender.sent.length;
+    harness.clock.advance(1);
+    const code = await harness.service.issueCodeForNewChannelLink(phoneValue);
+    expect(code).toMatch(/^\d{6}$/);
+    expect(harness.sender.sent).toHaveLength(sentByRegistration);
+    expect(unwrap(await harness.verify(phoneValue, code!)).user.status).toBe('active');
+  });
+
+  it('caps link codes by the per-phone window and never issues one for an unknown phone', async () => {
+    const harness = createHarness();
+    const phoneValue = '3005559876';
+    unwrap(await harness.registration(phoneValue));
+    expect(await harness.service.issueCodeForNewChannelLink(phoneValue)).not.toBeNull();
+    expect(await harness.service.issueCodeForNewChannelLink(phoneValue)).not.toBeNull();
+    expect(await harness.service.issueCodeForNewChannelLink(phoneValue)).toBeNull();
+    expect(await harness.service.issueCodeForNewChannelLink('3005550000')).toBeNull();
+    expect(await harness.service.issueCodeForNewChannelLink('not-a-phone')).toBeNull();
+  });
 });
 
 describe('profile validation rules', () => {

@@ -12,12 +12,17 @@ export {
   PROVIDER_PROFILE_SERVICE,
   IDENTITY_APPLICATION,
   IDENTITY_CHANNEL_APPLICATION,
+  IDENTITY_CHANNEL_ONBOARDING,
   IDENTITY_NOTIFICATION_DIRECTORY,
   OTP_SENDER,
   IDENTITY_MAINTENANCE,
   IDENTITY_ASSISTANT,
 } from './ports/tokens.js';
 export { ProviderProfileService } from './application/provider-profile-service.js';
+export type {
+  ChannelOnboardingResult,
+  ChannelOnboardingService,
+} from './application/channel-onboarding-service.js';
 export type { ProviderPublicSummary } from './domain/provider-profile.js';
 export type { IdentityChannel } from './domain/channel-link.js';
 export type { PhoneNumber } from './domain/phone-number.js';
