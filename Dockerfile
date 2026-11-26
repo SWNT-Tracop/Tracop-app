@@ -41,6 +41,9 @@ COPY --from=build /app/package.json /app/pnpm-workspace.yaml ./
 COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/drizzle ./apps/api/drizzle
+# Licensed photos of the showcase seed (scripts/showcase/photos/credits.json).
+COPY --from=build /app/apps/api/scripts/showcase/photos ./apps/api/scripts/showcase/photos
+COPY --from=build /app/apps/api/scripts/deploy-after-start.sh ./apps/api/scripts/deploy-after-start.sh
 COPY --from=build /app/packages/contracts/package.json ./packages/contracts/
 COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
 # Never run as root; the image has no secrets: everything comes from the environment.

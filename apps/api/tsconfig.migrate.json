@@ -11,6 +11,9 @@
     "drizzle/migrate.ts",
     "drizzle/seed.ts",
     "scripts/provision-db-roles.ts",
-    "scripts/configure-storage-lifecycle.ts"
+    "scripts/configure-storage-lifecycle.ts",
+    "scripts/create-staff.ts",
+    "scripts/showcase-seed.ts",
+    "scripts/showcase-purge.ts"
   ]
 }

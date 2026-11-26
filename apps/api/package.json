@@ -15,6 +15,8 @@
     "db:provision-roles": "tsx scripts/provision-db-roles.ts",
     "db:seed": "tsx drizzle/seed.ts",
     "identity:create-staff": "tsx scripts/create-staff.ts",
+    "showcase:seed": "tsx scripts/showcase-seed.ts",
+    "showcase:purge": "tsx scripts/showcase-purge.ts",
     "ai:eval-live": "tsx scripts/ai-eval-live.ts",
     "recommendations:import-reference-prices": "tsx scripts/import-reference-prices.ts",
     "storage:configure-lifecycle": "tsx scripts/configure-storage-lifecycle.ts",
