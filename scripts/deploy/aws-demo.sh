@@ -65,7 +65,8 @@ services:
     image: $image
 EOF
 candidate=("${compose[@]}" -f "$release/candidate.yml")
-# Back up before migrations. Never seed, wipe volumes, or restore the DB automatically.
+# Back up before migrations. Never wipe volumes or restore the DB automatically; the only data
+# added on its own is the suspended showcase, and only when it is missing (see below).
 "${compose[@]}" exec --interactive=false -T db sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc --no-owner' > "$release/database.dump.partial"
 test -s "$release/database.dump.partial"
@@ -88,6 +89,15 @@ done
 curl -fsS --connect-timeout 5 --max-time 10 "$PUBLIC_URL/health" > "$release/health.json"
 container=$("${candidate[@]}" ps -q api)
 [[ "$(docker inspect --format '{{.Config.Image}}' "$container")" == "$image" ]]
+
+# Presentation data (apps/api/scripts/deploy-after-start.sh), no-ops when already done, never deleting:
+# the suspended showcase when it is missing (an empty or rebuilt database gets it back) and admin
+# for BOOTSTRAP_ADMIN_PHONE from the server .env.demo. A failure only warns and keeps the release.
+# SHOWCASE_SEED=off skips it.
+if [[ "${SHOWCASE_SEED:-on}" != off ]]; then
+  "${candidate[@]}" exec --interactive=false -T api sh scripts/deploy-after-start.sh ||
+    echo 'WARNING: presentation setup failed; showcase accounts stay suspended'
+fi
 
 # Keep the separately managed Caddy routes/assets; refresh only its exported API schema.
 edge="${SWAGGER_DIR:-/opt/tracop-edge/swagger-demo}"

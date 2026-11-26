@@ -16,6 +16,8 @@ x-app: &app
     NODE_ENV: development
     APP_PROFILE: demo
     OTP_SENDER: ${OTP_SENDER:-console}
+    # Phone that every deploy makes admin when it is not yet (set only in the server .env.demo).
+    BOOTSTRAP_ADMIN_PHONE: ${BOOTSTRAP_ADMIN_PHONE:-}
     TELEGRAM_MODE: webhook
     DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     S3_ENDPOINT: ${S3_ENDPOINT}
@@ -81,6 +83,19 @@ services:
     command: ['node', 'dist/worker.js']
     depends_on:
       setup: { condition: service_completed_successfully }
+
+  # Runs on every `up` once the API is healthy (the deploy script runs it as well): seeds the
+  # presentation showcase when it is missing and makes BOOTSTRAP_ADMIN_PHONE admin when it is not.
+  # Both are no-ops when already done and never delete anything.
+  showcase:
+    <<: *app
+    command: ['sh', 'scripts/deploy-after-start.sh']
+    environment:
+      <<: *app-env
+      SHOWCASE_API_URL: http://api:3000
+    restart: 'no'
+    depends_on:
+      api: { condition: service_healthy }
 
   backup:
     image: postgres:16-alpine

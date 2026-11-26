@@ -659,7 +659,8 @@ pnpm test                         # todas las pruebas (Testcontainers si hay Doc
 pnpm build                        # build de todo
 pnpm openapi:export               # regenera docs/openapi.json (luego: prettier --write docs/openapi.json)
 pnpm openapi:check                # comprueba que docs/openapi.json está al día
-pnpm identity:create-staff --phone "+57 300 000 0000" --name "Nombre" --role admin  # CLI protegido
+pnpm identity:create-staff --phone "+57 300 000 0000" --name "Nombre" --role admin [--promote]  # CLI protegido; --promote vuelve personal una cuenta existente
+pnpm --filter @tracop/api showcase:seed / showcase:purge  # vitrina de 31 cuentas suspendidas (perfil demo); ver docs/SHOWCASE.md
 pnpm telegram:set-webhook         # registra el webhook de Telegram
 pnpm catalog:expire-lots          # expira lotes (manual; el trabajador lo hace cada 5 min)
 pnpm catalog:purge-orphan-photos  # purga fotos huérfanas (manual; el trabajador lo hace cada hora)
