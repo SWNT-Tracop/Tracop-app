@@ -82,6 +82,19 @@ services:
     depends_on:
       setup: { condition: service_completed_successfully }
 
+  # Showcase for the presentation (31 suspended demo accounts and their activity). Runs on every
+  # `up`, waits for a healthy API and only seeds when the showcase is missing, so an emptied or
+  # rebuilt database gets it back; it never deletes anything. The deploy script runs it as well.
+  showcase:
+    <<: *app
+    command: ['node', 'dist/scripts/showcase-seed.js', '--skip-if-seeded']
+    environment:
+      <<: *app-env
+      SHOWCASE_API_URL: http://api:3000
+    restart: 'no'
+    depends_on:
+      api: { condition: service_healthy }
+
   backup:
     image: postgres:16-alpine
     environment:

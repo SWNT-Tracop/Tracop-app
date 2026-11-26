@@ -33,6 +33,7 @@ if(command === 'docker') {
   if(args[0] === 'compose') {
     if(has('config')) console.log('services: {}');
     if(has('ps')) console.log(args.at(-1));
+    if(has('exec') && args.includes('dist/scripts/showcase-seed.js')) fail('showcase');
     if(has('exec')) console.log('synthetic-backup');
     if(has('run')) fail('migration');
     if(has('up') && !args.some(x => x.endsWith('previous-images.yml'))) fail('activation');
@@ -45,7 +46,7 @@ if(command === 'docker') {
   });
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-  function run(failure = '') {
+  function run(failure = '', extra: Record<string, string> = {}) {
     const result = spawnSync('bash', [script], {
       env: {
         ...process.env,
@@ -58,6 +59,7 @@ if(command === 'docker') {
         SWAGGER_DIR: join(root, 'absent-swagger'),
         CALLS: join(root, 'calls'),
         FAIL: failure,
+        ...extra,
       },
       encoding: 'utf8',
       timeout: 20000,
@@ -118,5 +120,38 @@ if(command === 'docker') {
     const { result, calls } = run('stale');
     expect(result.status).toBe(0);
     expect(calls.some((call) => call.command === 'docker')).toBe(false);
+  });
+
+  const showcaseRuns = (calls: Call[]) =>
+    calls.filter(
+      (call) => call.command === 'docker' && call.args.includes('dist/scripts/showcase-seed.js'),
+    );
+
+  it('seeds the showcase after the release is live, only when it is missing', () => {
+    const { calls } = run();
+    const activation = calls.findIndex(
+      (call) => call.command === 'docker' && call.args.includes('up') && call.args.includes('api'),
+    );
+    const [showcase] = showcaseRuns(calls);
+    expect(showcase?.args.slice(-5)).toEqual([
+      '-T',
+      'api',
+      'node',
+      'dist/scripts/showcase-seed.js',
+      '--skip-if-seeded',
+    ]);
+    expect(calls.indexOf(showcase!)).toBeGreaterThan(activation);
+  });
+
+  it('keeps the release when the showcase seed fails', () => {
+    const { result, calls } = run('showcase');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('WARNING: showcase seed failed');
+    expect(showcaseRuns(calls)).toHaveLength(1);
+  });
+
+  it('skips the showcase with SHOWCASE_SEED=off', () => {
+    const { calls } = run('', { SHOWCASE_SEED: 'off' });
+    expect(showcaseRuns(calls)).toEqual([]);
   });
 });
