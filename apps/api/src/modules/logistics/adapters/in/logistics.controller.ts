@@ -73,7 +73,7 @@ export class LogisticsController {
   }
 
   @Get('carriers')
-  @Roles('operator')
+  @Roles('operator', 'admin')
   @ApiOperation({ summary: 'Listar transportistas (operador)' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
   async listCarriers(@Req() req: Request, @Query() query: unknown) {
@@ -82,7 +82,7 @@ export class LogisticsController {
   }
 
   @Post('trips/recommend')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Recomendar paradas por zonas textuales (sin coordenadas)' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
@@ -92,7 +92,7 @@ export class LogisticsController {
   }
 
   @Get('orders/candidates')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @ApiOperation({ summary: 'Listar pedidos pagados con datos mínimos para planear viajes' })
   @ApiResponse({
     status: 200,
@@ -129,7 +129,7 @@ export class LogisticsController {
   }
 
   @Get('trips')
-  @Roles('operator')
+  @Roles('operator', 'admin')
   @ApiOperation({ summary: 'Listar todos los viajes (operador)' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
   async listTrips(@Req() req: Request, @Query() query: unknown) {
@@ -138,7 +138,7 @@ export class LogisticsController {
   }
 
   @Get('trips/:id')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @ApiOperation({ summary: 'Consultar viaje' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
   async getTrip(@Req() req: Request, @Param('id') id: string) {
@@ -146,7 +146,7 @@ export class LogisticsController {
   }
 
   @Get('trips/:id/stops')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @ApiOperation({ summary: 'Listar paradas de un viaje' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
   async listStops(@Req() req: Request, @Param('id') id: string) {
@@ -169,7 +169,7 @@ export class LogisticsController {
   }
 
   @Post('trips/:id/reassign')
-  @Roles('operator')
+  @Roles('operator', 'admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reasignar viaje para resolver conflictos' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
@@ -216,7 +216,7 @@ export class LogisticsController {
   }
 
   @Post('trips/:id/cancel')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancelar viaje' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
@@ -233,7 +233,7 @@ export class LogisticsController {
   }
 
   @Get('conflicts')
-  @Roles('operator')
+  @Roles('operator', 'admin')
   @ApiOperation({ summary: 'Pedidos duplicados entre viajes activos' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
   async conflicts(@Req() req: Request) {
@@ -267,7 +267,7 @@ export class LogisticsController {
   }
 
   @Post('incidents')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Abrir incidencia de transporte' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
@@ -285,7 +285,7 @@ export class LogisticsController {
   }
 
   @Post('incidents/:id/resolve')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resolver incidencia' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
@@ -299,7 +299,7 @@ export class LogisticsController {
   }
 
   @Get('incidents')
-  @Roles('carrier', 'operator')
+  @Roles('carrier', 'operator', 'admin')
   @ApiOperation({ summary: 'Listar incidencias' })
   @ApiResponse({ status: 400, description: 'Solicitud inválida o no autorizada.' })
   async listIncidents(@Req() req: Request, @Query() query: unknown) {

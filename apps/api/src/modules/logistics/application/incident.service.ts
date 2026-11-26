@@ -1,3 +1,4 @@
+import { isLogisticsStaff } from '../domain/logistics-staff.js';
 import { Inject, Injectable } from '@nestjs/common';
 import { OUTBOX_WRITER } from '../../../shared/ports/outbox-writer.js';
 import type { OutboxWriter } from '../../../shared/ports/outbox-writer.js';
@@ -100,7 +101,7 @@ export class IncidentService {
           payload: { incidentId: saved.id, orderId: saved.orderId },
         },
       ]);
-      if (actor.role === 'operator')
+      if (isLogisticsStaff(actor.role))
         await this.audit.record({
           actorId: actor.sub,
           actorRole: actor.role,
@@ -117,13 +118,13 @@ export class IncidentService {
   async list(actor: LogisticsActor, limit = 50): Promise<readonly IncidentProps[]> {
     this.requireCarrierOrOperator(actor);
     const safeLimit = Math.min(Math.max(limit, 1), 200);
-    return actor.role === 'operator'
+    return isLogisticsStaff(actor.role)
       ? this.repository.listIncidents(safeLimit)
       : this.repository.listIncidentsForCarrier(actor.sub, safeLimit);
   }
 
   private requireCarrierOrOperator(actor: LogisticsActor): void {
-    if (actor.role !== 'carrier' && actor.role !== 'operator')
+    if (actor.role !== 'carrier' && !isLogisticsStaff(actor.role))
       throw new DomainError('Rol no autorizado.', 'invalid_role');
   }
 }
