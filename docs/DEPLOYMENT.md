@@ -61,6 +61,10 @@ pnpm demo:down    # detiene; DEMO_WIPE=1 pnpm demo:down también borra los volú
 - **Recorrido completo por HTTP:** `pnpm demo:smoke`, explicado en [LIVE-WALKTHROUGH.md](LIVE-WALKTHROUGH.md).
 - Usuarios sintéticos del seed: `+57300000000{01..07}`, uno por rol.
 
+## Vitrina de la sustentación
+
+El despliegue de AWS siembra la vitrina (31 cuentas suspendidas con lotes, pedidos y pagos) solo si falta, al final de cada despliegue y en cada `docker compose up`. Con `SHOWCASE_SEED=off` se desactiva. Ver [SHOWCASE.md](SHOWCASE.md).
+
 ## Imagen
 
 `Dockerfile` en tres etapas sobre `node:22.23.1-bookworm-slim`: construcción, dependencias de producción y ejecución. La etapa final copia solo `dist/`, `drizzle/` y las dependencias de producción (sin `jest`, `tsx`, `drizzle-kit` ni `eslint`), corre como el usuario `node`, nunca como root, y no contiene secretos: todo llega por el entorno. La misma imagen sirve para:
