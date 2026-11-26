@@ -25,7 +25,7 @@ describeMinio('S3StorageAdapter with MinIO Testcontainers', () => {
       .start();
     publicEndpoint = container.getConnectionUrl();
     const internalEndpoint = new URL(publicEndpoint);
-    internalEndpoint.hostname = '127.0.0.1';
+    if (internalEndpoint.hostname === 'localhost') internalEndpoint.hostname = '127.0.0.1';
     internalEndpointUrl = internalEndpoint.toString().replace(/\/$/, '');
     const client = new S3Client({
       endpoint: internalEndpointUrl,
@@ -119,7 +119,7 @@ describeMinio('MinIO server-side CORS (MINIO_API_CORS_ALLOW_ORIGIN, as in docker
       .withEnvironment({ MINIO_API_CORS_ALLOW_ORIGIN: allowedOrigin })
       .start();
     const url = new URL(restricted.getConnectionUrl());
-    url.hostname = '127.0.0.1';
+    if (url.hostname === 'localhost') url.hostname = '127.0.0.1';
     endpoint = url.toString().replace(/\/$/, '');
     await new S3Client({
       endpoint,
