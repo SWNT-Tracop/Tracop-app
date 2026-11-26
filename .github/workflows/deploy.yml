@@ -31,12 +31,15 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: DEPLOY_REF
           script: |
-            set -e
+            sudo -n env DEPLOY_REF="$DEPLOY_REF" sh -s <<'DEPLOY'
+            set -eu
             cd /opt/tracop
+            test -z "$(git status --porcelain)"
             git fetch origin
             git checkout --detach "$(git rev-parse --verify "origin/${DEPLOY_REF}^{commit}" 2>/dev/null || git rev-parse --verify "${DEPLOY_REF}^{commit}")"
             docker compose -f docker-compose.aws.yml --env-file .env.demo up -d --build --wait api worker
             curl -fsS http://127.0.0.1:3100/health
             curl -fsS http://127.0.0.1:3100/ready | grep -q '"status":"ready"'
+            DEPLOY
         env:
           DEPLOY_REF: ${{ inputs.ref }}
