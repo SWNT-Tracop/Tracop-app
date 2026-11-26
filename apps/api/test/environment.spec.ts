@@ -42,6 +42,11 @@ const environmentKeys = [
   'AI_CONSENT_VERSION',
 ];
 const previousValues = new Map<string, string | undefined>();
+/** Approved legal versions: production refuses the v0-draft defaults. */
+const productionLegal = {
+  PRIVACY_POLICY_VERSION: 'privacy-v1',
+  AI_CONSENT_VERSION: 'ai-v1',
+} as const;
 const productionS3 = {
   S3_ENDPOINT: 'https://s3.example.test',
   S3_BUCKET: 'tracop-test',
@@ -110,6 +115,7 @@ describe('runtime environment validation', () => {
       TELEGRAM_BOT_TOKEN: '123456:token',
       TELEGRAM_WEBHOOK_SECRET: STRONG.TELEGRAM_WEBHOOK_SECRET,
       ...productionS3,
+      ...productionLegal,
     });
     delete process.env.TELEGRAM_BOT_USERNAME;
     expect(() => loadAppEnvironment('/tmp/tracop-no-env')).toThrow('TELEGRAM_BOT_USERNAME');
@@ -365,6 +371,7 @@ describe('runtime environment validation', () => {
       TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
       CORS_ALLOWED_ORIGINS: ' https://app.example.test , https://backoffice.example.test ',
       ...productionS3,
+      ...productionLegal,
     });
     expect(loadAppEnvironment('/tmp/tracop-no-env').allowedCorsOrigins).toEqual([
       'https://app.example.test',
@@ -385,6 +392,7 @@ describe('runtime environment validation', () => {
       TELEGRAM_BOT_TOKEN: '123456:token',
       TELEGRAM_BOT_USERNAME: 'tracop_test_bot',
       ...productionS3,
+      ...productionLegal,
     };
     Object.assign(process.env, production);
     expect(() => loadAppEnvironment('/tmp/tracop-no-env')).not.toThrow();
@@ -471,6 +479,7 @@ describe('runtime environment validation', () => {
       S3_API_SECRET_KEY: 'api-secret',
       S3_POLICY_ACCESS_KEY: 'policy-key',
       S3_POLICY_SECRET_KEY: 'policy-secret',
+      ...productionLegal,
     });
     delete process.env.S3_PUBLIC_ENDPOINT;
 
