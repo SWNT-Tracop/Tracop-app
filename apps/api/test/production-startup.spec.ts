@@ -94,7 +94,8 @@ describe('production startup (env.ts)', () => {
     expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
     only({ ...COMPLETE_PRODUCTION, AI_CONSENT_VERSION: 'v0-draft' });
     expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
-    const { MIGRATION_DATABASE_URL: _owner, ...withoutOwner } = COMPLETE_PRODUCTION;
+    const { MIGRATION_DATABASE_URL: ownerUrl, ...withoutOwner } = COMPLETE_PRODUCTION;
+    expect(ownerUrl).toContain('tracop_owner');
     only(withoutOwner);
     expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/MIGRATION_DATABASE_URL/);
   });

@@ -33,11 +33,11 @@ pnpm demo:down    # detiene; DEMO_WIPE=1 pnpm demo:down también borra los volú
 
 `Dockerfile` en tres etapas sobre `node:22.23.1-bookworm-slim`: construcción, dependencias de producción y ejecución. La etapa final copia solo `dist/`, `drizzle/` y las dependencias de producción (sin `jest`, `tsx`, `drizzle-kit` ni `eslint`), corre como el usuario `node`, nunca como root, y no contiene secretos: todo llega por el entorno. La misma imagen sirve para:
 
-| Proceso     | Comando                                                        |
-| ----------- | -------------------------------------------------------------- |
-| API         | `node dist/main.js` (puerto 3000)                              |
+| Proceso     | Comando                                                                 |
+| ----------- | ----------------------------------------------------------------------- |
+| API         | `node dist/main.js` (puerto 3000)                                       |
 | Trabajador  | `node dist/worker.js` (uno o más; latido en `shared.worker_heartbeats`) |
-| Migraciones | `node dist/drizzle/migrate.js`, antes de cada versión          |
+| Migraciones | `node dist/drizzle/migrate.js`, antes de cada versión                   |
 
 `APP_VERSION` (por defecto `0.0.0-dev`) se pasa como argumento de construcción y queda en la etiqueta `org.opencontainers.image.version`: `docker inspect` dice qué versión está desplegada.
 
@@ -45,11 +45,11 @@ pnpm demo:down    # detiene; DEMO_WIPE=1 pnpm demo:down también borra los volú
 
 Producción separa quién puede cambiar el esquema de quién solo escribe filas:
 
-| Rol             | Lo usa                                   | Privilegios                                                                                  |
-| --------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `tracop_owner`  | Solo el ejecutor de migraciones          | Dueño de los schemas; crea tablas, índices y triggers. Sin `SUPERUSER`.                      |
-| `tracop_app`    | API y trabajador                         | `USAGE` en los schemas; `SELECT`, `INSERT`, `UPDATE` y `DELETE` en las tablas y secuencias.  |
-| `tracop_app`    | pg-boss, dentro de su propio schema      | Dueño de `pgboss`, que crea y migra sus tablas al arrancar.                                  |
+| Rol            | Lo usa                              | Privilegios                                                                                 |
+| -------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
+| `tracop_owner` | Solo el ejecutor de migraciones     | Dueño de los schemas; crea tablas, índices y triggers. Sin `SUPERUSER`.                     |
+| `tracop_app`   | API y trabajador                    | `USAGE` en los schemas; `SELECT`, `INSERT`, `UPDATE` y `DELETE` en las tablas y secuencias. |
+| `tracop_app`   | pg-boss, dentro de su propio schema | Dueño de `pgboss`, que crea y migra sus tablas al arrancar.                                 |
 
 - `apps/api/scripts/provision-db-roles.ts` crea los dos roles y fija sus contraseñas desde `DB_OWNER_PASSWORD` y `DB_APP_PASSWORD`; usa las variables libpq (`PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`) de la conexión de superusuario, no una URL, porque una contraseña en base64 necesitaría codificarse dentro de ella. Es idempotente.
 - `drizzle/0032_database_roles.sql` concede los privilegios y los aplica también a las tablas futuras (`ALTER DEFAULT PRIVILEGES`). No crea roles, así que no guarda secretos y es inofensiva en desarrollo y en la demo, donde los roles no existen.
@@ -140,6 +140,7 @@ Si se alcanza el umbral, hay que implementar la compactación diseñada en [SYNC
   - `pnpm demo:check` lo hace con una copia recién tomada.
   - En CI, `test/backup-restore.spec.ts` restaura un volcado de la base migrada y comprueba las migraciones, los datos, que la secuencia de `server_seq` continúa y que los triggers append-only siguen activos.
 - **Recuperación:**
+
   1. Detener la API y el trabajador.
   2. `pg_restore --no-owner --exit-on-error -d <base vacía> <archivo.dump>`.
   3. `npx tsx drizzle/migrate.ts`, que no aplica nada si la copia ya es de esa versión.
