@@ -223,6 +223,15 @@ Ver [ADR-009](adr/ADR-009.md).
 5. **Logout** (`POST /auth/logout`): revoca la sesión indicada por `sid` con motivo `logout` y emite `SessionRevoked`.
 6. **Perfil** (`GET /me`, `PATCH /me`): el `IdentityAuthGuard` valida firma y claims del access token, exige sesión viva, usuario `active`, coincidencia `sub`/`sid`/`did` y rol permitido.
 
+### Acciones del admin sobre cuentas
+
+`IdentityStaffService` (solo `admin`, auditado en la misma transacción con el motivo):
+
+- **Buscar** (`GET /staff/users?phone=`): devuelve id, rol, estado, nombre y los 4 últimos dígitos, nunca el teléfono completo.
+- **Cambiar rol** (`POST /staff/users/{id}/role`): solo entre roles del mercado (productor, proveedor, comprador, transportista). Los roles del personal solo vienen del CLI `identity:create-staff`.
+- **Suspender o reactivar** (`POST /staff/users/{id}/suspend` y `/reactivate`): bloquea al instante el ingreso, la renovación y cada petición; los datos se conservan. Reactivar vuelve a `active`, o a `pending_verification` si el teléfono nunca se verificó.
+- Nunca sobre la propia cuenta ni sobre otro admin. Cada acción revoca las sesiones de la persona y emite `UserRoleChanged`, `UserSuspended` o `UserReactivated`, más `SessionRevoked`. El verificador del token lee el rol y el estado de la base en cada petición, así que el cambio rige de inmediato.
+
 ### JWT y configuración
 
 Los access tokens se emiten y validan con `jose@4.15.9` (HS256 fijado en lista blanca; se rechaza `none` y cualquier otro algoritmo), exigiendo `exp`, `iat`, `iss`, `aud` y `jti`, validando `iss`/`aud` y aplicando tolerancia de reloj configurable. Claims propios: `sub`, `role`, `sid` y `did`. `JWT_SECRET` exige al menos 32 bytes; `JWT_ISSUER` y `JWT_AUDIENCE` tienen valores por defecto y `JWT_CLOCK_TOLERANCE_SECONDS` admite como máximo 60 segundos.
