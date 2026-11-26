@@ -76,7 +76,7 @@ activated=true
 # Readiness includes the database and worker heartbeat; allow the first heartbeat to arrive.
 ready=false
 for attempt in $(seq 1 30); do
-  if curl -fsS "$PUBLIC_URL/ready" > "$release/readiness.json" &&
+  if curl -fsS --connect-timeout 5 --max-time 10 "$PUBLIC_URL/ready" > "$release/readiness.json" &&
     docker run --rm --interactive=false --user 0 -v "$release:/check:ro" --entrypoint node "$image" -e \
       'const r=require("/check/readiness.json");process.exit(r.status === "ready" ? 0 : 1)'; then
     ready=true
@@ -85,7 +85,7 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 [[ "$ready" == true ]]
-curl -fsS "$PUBLIC_URL/health" > "$release/health.json"
+curl -fsS --connect-timeout 5 --max-time 10 "$PUBLIC_URL/health" > "$release/health.json"
 container=$("${candidate[@]}" ps -q api)
 [[ "$(docker inspect --format '{{.Config.Image}}' "$container")" == "$image" ]]
 
