@@ -41,6 +41,33 @@ pnpm demo:down    # detiene; DEMO_WIPE=1 pnpm demo:down también borra los volú
 
 `APP_VERSION` (por defecto `0.0.0-dev`) se pasa como argumento de construcción y queda en la etiqueta `org.opencontainers.image.version`: `docker inspect` dice qué versión está desplegada.
 
+## HTTPS sobre una demo AWS existente
+
+`docker-compose.edge.yml` añade Caddy a la red `tracop-aws_default` sin recrear la API, el trabajador ni PostgreSQL. Requiere el registro DNS apuntando a la instancia y los puertos TCP 80/443 abiertos en su grupo de seguridad. El puerto 3100 sigue disponible para los clientes ya distribuidos.
+
+En un directorio separado del servidor, copiar `Caddyfile` y `docker-compose.edge.yml`, y crear un `.env` con permisos `600`:
+
+```dotenv
+TRACOP_DOMAIN=tracop.duckdns.org
+TRACOP_BACKEND_NETWORK=tracop-aws_default
+```
+
+```bash
+docker compose -f docker-compose.edge.yml run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose -f docker-compose.edge.yml up -d
+curl --fail https://tracop.duckdns.org/ready
+```
+
+Configurar `TRUST_PROXY=1` en el entorno de la API cuando el tráfico llegue por Caddy. Para retirar únicamente el proxy, ejecutar `docker compose -f docker-compose.edge.yml down` sin `--volumes`; los datos de la aplicación y los certificados se conservan. Si cambia la IP pública, actualizar DuckDNS.
+
+La imagen compila también el seed y la configuración del ciclo de vida: los servicios `setup` de las demos ejecutan `node dist/drizzle/migrate.js`, `node dist/drizzle/seed.js` y, en la demo con MinIO, `node dist/scripts/configure-storage-lifecycle.js`. No necesitan descargar `tsx` en el servidor.
+
+## Proveedor de IA
+
+La configuración admite `LLM_PROVIDER=anthropic` o `LLM_PROVIDER=google` ([ADR-023](adr/ADR-023.md)). Con Gemini se necesita una clave de Google AI Studio en `LLM_API_KEY` y un modelo explícito en `LLM_MODEL`; `LLM_BASE_URL` puede quedar vacío para usar el endpoint oficial. `AI_ENABLED=false` mantiene el asistente en el formulario guiado sin llamadas al proveedor.
+
+La configuración de producción exige además `MIGRATION_DATABASE_URL` y versiones legales aprobadas. No cambiar `v0-draft` por una versión ficticia para superar la validación. El archivo externo `envToDeploy.md` anterior a ADR-023 necesita actualizar su proveedor y completar los valores vacíos antes de usarse; no es prueba de que esas variables estén instaladas en el servidor.
+
 ## Roles de base de datos
 
 Producción separa quién puede cambiar el esquema de quién solo escribe filas:
