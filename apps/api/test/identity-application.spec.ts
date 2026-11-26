@@ -315,6 +315,24 @@ describe('identity application use cases with in-memory ports', () => {
     expect((await harness.service.requestOtp(phoneValue, '10.0.0.1')).ok).toBe(false);
   });
 
+  it('refuses a registration under the code limit and lets it through once the limit passes', async () => {
+    const harness = createHarness();
+    const phoneValue = '3007770001';
+    expect((await harness.service.requestOtp(phoneValue, '10.0.0.9')).ok).toBe(true);
+    const limited = await harness.registration(phoneValue);
+    expect(limited.ok).toBe(false);
+    if (!limited.ok) expect(limited.error.code).toBe('rate_limited');
+    const parsed = PhoneNumber.parse(phoneValue);
+    if (!parsed.ok) throw parsed.error;
+    expect(await harness.users.findByPhone(parsed.value)).toBeNull();
+    expect(harness.sender.sent).toHaveLength(0);
+
+    harness.clock.advance(61);
+    unwrap(await harness.registration(phoneValue));
+    const code = harness.sender.sent.at(-1)!.code;
+    expect(unwrap(await harness.verify(phoneValue, code)).user.status).toBe('active');
+  });
+
   it('answers registration with the bot link that delivers the code', async () => {
     const harness = createHarness();
     expect(unwrap(await harness.registration('3001234567'))).toEqual({

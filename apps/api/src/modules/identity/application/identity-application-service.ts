@@ -129,8 +129,11 @@ export class IdentityApplicationService {
       fullNameError(command.fullName) ?? localeError(locale, this.environment.supportedLocales);
     if (profileError) return failure(profileError);
     const phone = phoneResult.value;
+    // A limited registration is refused as 429, like otp/request: answering "ok" without
+    // creating the account left people waiting for a code that never came. The limits apply
+    // to every phone alike, so the refusal does not reveal whether an account exists.
     const limitError = await this.consumeOtpRequestLimits(phone, command.ip);
-    if (limitError) return success(this.registerResponse());
+    if (limitError) return failure(limitError);
 
     const now = this.clock.now();
     const creation = await this.unitOfWork.run(async () => {
