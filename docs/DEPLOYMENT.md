@@ -12,6 +12,38 @@ La aplicación no arranca con `APP_PROFILE=production` sin `NODE_ENV=production`
 
 ## Demo local
 
+### Actualizaciones de la demo AWS desde `main`
+
+El CI valida cada PR y push. Solo un push a `main`, o la ejecución manual de
+**CI** sobre `main`, llama al despliegue después de que `validate` termine bien.
+Se construye en EC2 el mismo SHA validado. Un PR o push a otra rama no despliega.
+La protección de `main` exige una aprobación y CI antes de integrar el PR.
+
+El repositorio necesita los secretos `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY` y la
+variable `API_BASE_URL` con el origen HTTPS, sin barra final. El usuario SSH debe
+poder ejecutar `sudo -n`; `/opt/tracop` debe ser un clon limpio con acceso de
+lectura a GitHub y una demo previamente inicializada.
+
+`scripts/deploy/aws-demo.sh` conserva `.env.demo`, los overrides privados,
+Telegram, Gemini y el proxy HTTPS. Guarda un dump antes de migrar, ejecuta
+únicamente migraciones y actualiza API/worker sin volver a sembrar datos ni
+recrear la base. Los despliegues se serializan y omiten commits superados por
+otro push a `main`. Swagger conserva sus rutas y actualiza el esquema exportado.
+
+Cada ejecución guarda imágenes anteriores, configuración privada y dump en
+`/opt/tracop-deployments/release-<sha>.*` (directorio `700`, archivos `600`).
+Si falla el arranque o la disponibilidad, restaura las imágenes y configuración
+anteriores. **Las migraciones no se revierten automáticamente**: deben ser
+compatibles con la versión anterior; una recuperación de datos requiere revisar
+y restaurar el dump manualmente. No hay poda automática de estas copias: revisar
+el espacio del servidor periódicamente. Una compilación o migración fallida
+no sustituye los servicios que estaban corriendo.
+
+Este flujo actualiza la demo existente (`APP_PROFILE=demo`); el primer despliegue
+con perfil `production` sigue su procedimiento separado más abajo.
+
+### Arranque local
+
 ```bash
 pnpm demo:up      # construye la imagen, genera .env.demo con secretos aleatorios la primera vez,
                   # migra, siembra datos sintéticos, crea el bucket y su ciclo de vida, y arranca todo
