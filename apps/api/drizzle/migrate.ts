@@ -7,9 +7,14 @@ import pg from 'pg';
 const envPath = resolve('../../.env');
 if (existsSync(envPath)) loadEnvFile(envPath);
 
-const databaseUrl = process.env.DATABASE_URL;
+// Migrations change the schema, so production runs them with the owner role
+// (MIGRATION_DATABASE_URL) while the API and the worker connect with the least-privilege role
+// (DATABASE_URL). Local development and the demo use a single role and keep DATABASE_URL.
+const databaseUrl = process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!databaseUrl) {
-  throw new Error('DATABASE_URL must be set in the environment or repository .env file.');
+  throw new Error(
+    'MIGRATION_DATABASE_URL (or DATABASE_URL) must be set in the environment or repository .env file.',
+  );
 }
 
 const pool = new pg.Pool({ connectionString: databaseUrl });

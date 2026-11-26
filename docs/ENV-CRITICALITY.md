@@ -13,6 +13,7 @@ Cómo rotar cada secreto y qué efecto tiene: [DEPLOYMENT.md](DEPLOYMENT.md), «
 | Variable                                       | Criticidad                       | Rotar | Nota                                                                                                                |
 | ---------------------------------------------- | -------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                                 | Crítica                          | sí    | Incluye la contraseña de PostgreSQL.                                                                                |
+| `MIGRATION_DATABASE_URL`                       | Crítica                          | sí    | Contraseña del rol dueño del esquema; solo la usan las migraciones (`tracop_owner`).                                |
 | `JWT_SECRET`                                   | Crítica                          | sí    | Firma los JWT. Rotarlo cierra todas las sesiones.                                                                   |
 | `OTP_HMAC_SECRET`                              | Crítica                          | sí    | HMAC de los OTP. Rotarlo invalida los códigos en curso.                                                             |
 | `RATE_LIMIT_HMAC_SECRET`                       | Crítica                          | sí    | HMAC de contadores, IP del audit log y teléfonos expirados. Rotarlo reinicia contadores y seudónimos.               |

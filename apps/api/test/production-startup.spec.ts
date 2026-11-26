@@ -17,6 +17,8 @@ const COMPLETE_PRODUCTION = {
   NODE_ENV: 'production',
   APP_PROFILE: 'production',
   DATABASE_URL: 'postgres://tracop@db.internal.test/tracop',
+  MIGRATION_DATABASE_URL: 'postgres://tracop_owner@db.internal.test/tracop',
+  PRIVACY_POLICY_VERSION: 'v1',
   JWT_SECRET: secret(),
   OTP_HMAC_SECRET: secret(),
   RATE_LIMIT_HMAC_SECRET: secret(),
@@ -85,5 +87,15 @@ describe('production startup (env.ts)', () => {
     expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/TELEGRAM_MODE/);
     only({ ...COMPLETE_PRODUCTION, S3_ENDPOINT: 'http://s3.internal.test' });
     expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/https/);
+  });
+
+  it('refuses draft legal texts and a single database role in production', () => {
+    only({ ...COMPLETE_PRODUCTION, PRIVACY_POLICY_VERSION: 'v0-draft' });
+    expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
+    only({ ...COMPLETE_PRODUCTION, AI_CONSENT_VERSION: 'v0-draft' });
+    expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/v0-draft/);
+    const { MIGRATION_DATABASE_URL: _owner, ...withoutOwner } = COMPLETE_PRODUCTION;
+    only(withoutOwner);
+    expect(() => loadAppEnvironment(NO_ENV_FILE)).toThrow(/MIGRATION_DATABASE_URL/);
   });
 });

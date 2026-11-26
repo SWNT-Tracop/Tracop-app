@@ -2,16 +2,18 @@
 # La imagen se publica en GHCR y llega por `docker compose pull`.
 #
 # Requiere:
-#   - .env (600, fuera del repo) con los secretos de producción y DATABASE_URL.
+#   - .env (600, fuera del repo) con los secretos de producción: DATABASE_URL (rol tracop_app),
+#     MIGRATION_DATABASE_URL (rol tracop_owner), DB_OWNER_PASSWORD, DB_APP_PASSWORD y
+#     DB_SUPERUSER_PASSWORD.
 #   - ./Caddyfile con el dominio real.
-#   - Que los cambios de código previos estén integrados: imagen sin devDependencies
-#     (Dockerfile) y migraciones compiladas a dist (node dist/drizzle/migrate.js).
 name: tracop-prod
 
 services:
   caddy:
     image: caddy:2.9-alpine
     restart: unless-stopped
+    environment:
+      TRACOP_DOMAIN: ${TRACOP_DOMAIN:?TRACOP_DOMAIN must be the public API domain}
     ports:
       - '80:80'
       - '443:443'
@@ -61,8 +63,23 @@ services:
   migrate:
     image: ghcr.io/swnt-tracop/tracop-api:${VERSION:-latest}
     restart: 'no'
-    command: ['node', 'dist/drizzle/migrate.js']
+    # Roles and passwords first (superuser), then the migrations (owner). Both steps are
+    # idempotent, so the deploy script can run this service on every release.
+    command:
+      [
+        'sh',
+        '-c',
+        'node dist/scripts/provision-db-roles.js && node dist/drizzle/migrate.js',
+      ]
     env_file: .env
+    environment:
+      PGHOST: db
+      PGPORT: '5432'
+      PGUSER: ${DB_SUPERUSER:-postgres}
+      PGPASSWORD: ${DB_SUPERUSER_PASSWORD}
+      PGDATABASE: tracop
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD}
     depends_on:
       db:
         condition: service_healthy
@@ -72,7 +89,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_SUPERUSER:-postgres}
-      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_SUPERUSER_PASSWORD:?DB_SUPERUSER_PASSWORD is required}
       POSTGRES_DB: tracop
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -99,6 +116,25 @@ services:
     command: ['sh', '/scripts/backup-loop.sh']
     depends_on:
       - db
+
+  # Second copy off the server: the dumps above go to a private bucket with a 30-day lifecycle
+  # rule. The credentials can only write there (s3:PutObject); the restore test runs from your
+  # machine with the backups read from that bucket.
+  backup-upload:
+    image: amazon/aws-cli:2.31.7
+    restart: unless-stopped
+    entrypoint: ['sh', '/scripts/s3-upload-loop.sh']
+    environment:
+      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?BACKUP_S3_ACCESS_KEY_ID is required}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:?BACKUP_S3_SECRET_ACCESS_KEY is required}
+      AWS_DEFAULT_REGION: ${S3_REGION:-us-east-1}
+      BACKUP_S3_URI: ${BACKUP_S3_URI:?BACKUP_S3_URI is required, for example s3://tracop-backups-xxxx/prod}
+      UPLOAD_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-21600}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ./backups:/backups:ro
+    depends_on:
+      - backup
 
 volumes:
   pgdata:
