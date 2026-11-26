@@ -131,7 +131,8 @@ describePostgres('OTP request timing', () => {
       })
       .expect(200);
     await flush();
-    expect(messaging.sent.at(-1)?.text).toBe(messagingMessages.linked);
+    const reply = messaging.sent.at(-1)?.text ?? '';
+    expect(reply).toBe(messagingMessages.linkedWithCode(reply.match(/\d{6}/)?.[0] ?? ''));
   };
 
   it('responds before the channel send resolves for a linked phone, same shape as unlinked', async () => {

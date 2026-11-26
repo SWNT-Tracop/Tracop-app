@@ -11,15 +11,22 @@ import { IdentityController } from './adapters/in/identity.controller.js';
 import { IdentityAccessTokenVerifier } from './adapters/out/identity-access-token-verifier.js';
 import { ProviderProfileService } from './application/provider-profile-service.js';
 import { IdentityDataModule } from './identity-data.module.js';
+import { IdentityChannelModule } from './identity-channel.module.js';
+import { ChannelOnboardingService } from './application/channel-onboarding-service.js';
 import { IdentityMaintenanceService } from './application/identity-maintenance-service.js';
 import type { AppEnvironment } from '../../shared/infra/env.js';
 import type { Clock } from '../../shared/kernel/clock.js';
-import type { IdentityRetentionRepository } from './ports/identity-ports.js';
+import type {
+  IdentityChannelApplication,
+  IdentityRetentionRepository,
+} from './ports/identity-ports.js';
 import {
   CONSENT_REPOSITORY,
   DEVICE_REPOSITORY,
   IDENTITY_ACCESS_TOKEN_VERIFIER,
   IDENTITY_APPLICATION,
+  IDENTITY_CHANNEL_APPLICATION,
+  IDENTITY_CHANNEL_ONBOARDING,
   PROVIDER_PROFILE_REPOSITORY,
   PROVIDER_PROFILE_SERVICE,
   OTP_REPOSITORY,
@@ -34,7 +41,7 @@ import {
 } from './ports/tokens.js';
 
 @Module({
-  imports: [IdentityDataModule],
+  imports: [IdentityDataModule, IdentityChannelModule],
   controllers: [IdentityController],
   providers: [
     {
@@ -59,6 +66,12 @@ import {
         new IdentityApplicationService(...dependencies),
     },
     {
+      provide: IDENTITY_CHANNEL_ONBOARDING,
+      inject: [IDENTITY_CHANNEL_APPLICATION, IDENTITY_APPLICATION],
+      useFactory: (channels: IdentityChannelApplication, codes: IdentityApplicationService) =>
+        new ChannelOnboardingService(channels, codes),
+    },
+    {
       provide: PROVIDER_PROFILE_SERVICE,
       inject: [PROVIDER_PROFILE_REPOSITORY, USER_REPOSITORY],
       useFactory: (...dependencies: ConstructorParameters<typeof ProviderProfileService>) =>
@@ -81,6 +94,7 @@ import {
   ],
   exports: [
     IDENTITY_APPLICATION,
+    IDENTITY_CHANNEL_ONBOARDING,
     IDENTITY_ACCESS_TOKEN_VERIFIER,
     PROVIDER_PROFILE_SERVICE,
     IDENTITY_MAINTENANCE,

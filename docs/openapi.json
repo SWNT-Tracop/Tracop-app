@@ -1019,13 +1019,18 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "botLink": {
+                      "type": "string",
+                      "format": "uri"
                     }
                   },
-                  "required": ["message"],
+                  "required": ["message", "botLink"],
                   "additionalProperties": false
                 },
                 "example": {
-                  "message": "Si el registro puede continuar, recibirás un código."
+                  "message": "Si el registro puede continuar, recibirás un código.",
+                  "botLink": "https://t.me/tracop_demo_bot?start=link"
                 }
               }
             }

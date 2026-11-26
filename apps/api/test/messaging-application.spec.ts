@@ -83,6 +83,20 @@ describe('messaging application', () => {
     expect(result.replies[0]?.text).toBe(messagingMessages.linked);
   });
 
+  it('delivers the sign-in code of a newly linked chat in the confirmation reply', async () => {
+    const { service, identity } = setup();
+    identity.outcome = { status: 'linked', code: '482913' };
+    const result = await service.handleInboundMessage(
+      message({ type: 'contact', contact: { userId: '900001', phoneNumber: '3001234567' } }),
+    );
+    expect(result.replies).toEqual([
+      {
+        to: { channel: 'telegram', channelUserId: '900001' },
+        text: messagingMessages.linkedWithCode('482913'),
+      },
+    ]);
+  });
+
   it.each([
     ['already_linked', messagingMessages.alreadyLinked],
     ['user_not_found', messagingMessages.registerFirst],

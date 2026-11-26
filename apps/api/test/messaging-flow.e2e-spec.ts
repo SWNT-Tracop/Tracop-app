@@ -81,7 +81,7 @@ describePostgres('Telegram webhook flow', () => {
   });
 
   it('registers, links the channel, delivers the OTP, verifies and serves /me', async () => {
-    await request(app.getHttpServer())
+    const registered = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
         phone,
@@ -92,6 +92,9 @@ describePostgres('Telegram webhook flow', () => {
         consent: { accepted: true, version: 'v0-draft' },
       })
       .expect(201);
+    expect(registered.body.botLink).toBe(
+      `https://t.me/${process.env.TELEGRAM_BOT_USERNAME ?? ''}?start=link`,
+    );
 
     await request(app.getHttpServer())
       .post('/webhooks/telegram')
@@ -111,7 +114,14 @@ describePostgres('Telegram webhook flow', () => {
       )
       .expect(200);
     await flush();
-    expect(messaging.sent.at(-1)?.text).toBe(messagingMessages.linked);
+    const linkedText = messaging.sent.at(-1)?.text ?? '';
+    const linkCode = linkedText.match(/\d{6}/)?.[0] ?? '';
+    expect(linkedText).toBe(messagingMessages.linkedWithCode(linkCode));
+    const signedUp = await request(app.getHttpServer())
+      .post('/auth/otp/verify')
+      .send({ phone, deviceId, platform: 'web', code: linkCode })
+      .expect(201);
+    expect(signedUp.body.user.status).toBe('active');
 
     const beforeDuplicate = messaging.sent.length;
     await request(app.getHttpServer())
