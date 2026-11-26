@@ -112,6 +112,16 @@ type Operation = {
  * call gets past validation to the authorization check in the application layer.
  */
 const BODIES: Record<string, unknown> = {
+  // Its own phone: the OpenAPI example of otp/request shares the same number and would have
+  // used up its code quota by the time registration runs.
+  'POST /auth/register': {
+    phone: '3000000999',
+    role: 'buyer',
+    fullName: 'Persona sintética',
+    deviceId: createId(),
+    platform: 'android',
+    consent: { accepted: true, version: 'v0-draft' },
+  },
   'POST /orders': {
     id: createId(),
     lines: [{ lotId: createId(), quantityMilli: '1000' }],
