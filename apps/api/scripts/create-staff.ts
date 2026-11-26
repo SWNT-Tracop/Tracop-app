@@ -21,13 +21,16 @@ const confirmed = values.includes('--confirm');
 // An account that already exists with that phone (for example someone who signed up in the app)
 // becomes staff instead of failing on the unique phone.
 const promote = values.includes('--promote');
+// Deploys pass --if-needed: an account that already has the role is left untouched (no new
+// audit row, sessions kept), so running it on every deploy is safe.
+const ifNeeded = values.includes('--if-needed');
 
 if (process.env.NODE_ENV === 'test') throw new Error('identity:create-staff is disabled in test.');
 if (process.env.NODE_ENV === 'production' && !confirmed)
   throw new Error('Pass --confirm to create a staff user in production.');
 if (!phoneValue || !fullName || !role || !['operator', 'finance', 'admin'].includes(role)) {
   throw new Error(
-    'Usage: pnpm identity:create-staff --phone <E.164> --name <name> --role <operator|finance|admin> [--promote] [--confirm]',
+    'Usage: pnpm identity:create-staff --phone <E.164> --name <name> --role <operator|finance|admin> [--promote [--if-needed]] [--confirm]',
   );
 }
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
@@ -57,9 +60,15 @@ try {
       throw new Error('An account already uses that phone. Pass --promote to make it staff.');
     if (found) {
       if (found.status === 'expired') throw new Error('That account was retired.');
+      if (ifNeeded && found.role === role && found.status === 'active') {
+        outcome = `The account ${found.id} is already ${role}; nothing to do.`;
+        await client.query('COMMIT');
+        process.stdout.write(`${outcome}\n`);
+        process.exit(0);
+      }
       outcome = `Promoted the existing account ${found.id} from ${found.role} to ${role}.`;
       await client.query(
-        `UPDATE identity.users SET role = $2, full_name = $3, status = 'active',
+        `UPDATE identity.users SET role = $2, full_name = coalesce(nullif(full_name, ''), $3), status = 'active',
            phone_verified_at = coalesce(phone_verified_at, $4), updated_at = $4 WHERE id = $1`,
         [found.id, role, fullName, now],
       );
