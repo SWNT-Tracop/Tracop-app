@@ -21,6 +21,9 @@ const envSchema = z.object({
   APP_PROFILE: z.enum(['development', 'demo', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   DATABASE_URL: z.string().min(1),
+  // Production splits the roles: the API and the worker use DATABASE_URL (rows only) and the
+  // migrations use MIGRATION_DATABASE_URL (owner, DDL). Development and demo use one role.
+  MIGRATION_DATABASE_URL: optionalText(z.string().min(1)),
   JWT_SECRET: z.string().min(32),
   JWT_ISSUER: z.string().min(1).default('tracop'),
   JWT_AUDIENCE: z.string().min(1).default('tracop-api'),
@@ -209,6 +212,8 @@ const envSchema = z.object({
   S3_API_SECRET_KEY: optionalText(z.string().min(1)),
   S3_POLICY_ACCESS_KEY: optionalText(z.string().min(1)),
   S3_POLICY_SECRET_KEY: optionalText(z.string().min(1)),
+  // MinIO needs path-style addressing; AWS S3 uses virtual-hosted style. Set `false` for AWS.
+  S3_FORCE_PATH_STYLE: booleanFromString.default(true),
 });
 
 const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
@@ -236,6 +241,23 @@ const parsedEnvironmentSchema = envSchema.superRefine((value, ctx) => {
       path: ['APP_PROFILE'],
       message: 'APP_PROFILE=production requires NODE_ENV=production.',
     });
+  if (value.APP_PROFILE === 'production' && !value.MIGRATION_DATABASE_URL)
+    ctx.addIssue({
+      code: 'custom',
+      path: ['MIGRATION_DATABASE_URL'],
+      message: 'Required in production: the owner role runs the migrations, DATABASE_URL does not.',
+    });
+  if (value.NODE_ENV === 'production') {
+    // The legal texts are the team's: a draft version must never be accepted by real users.
+    for (const key of ['PRIVACY_POLICY_VERSION', 'AI_CONSENT_VERSION'] as const) {
+      if (value[key]?.trim().toLowerCase() === 'v0-draft')
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: 'Production requires an approved version of the legal text, not v0-draft.',
+        });
+    }
+  }
   if (value.APP_PROFILE === 'demo' && value.NODE_ENV === 'production')
     ctx.addIssue({
       code: 'custom',

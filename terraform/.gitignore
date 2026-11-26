@@ -1,0 +1,8 @@
+# Estado de Terraform (contiene la clave SSH privada y recursos) — nunca commitear.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.auto.tfvars
+*.pem
+!example.tfvars
