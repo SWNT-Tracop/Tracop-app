@@ -90,12 +90,13 @@ curl -fsS --connect-timeout 5 --max-time 10 "$PUBLIC_URL/health" > "$release/hea
 container=$("${candidate[@]}" ps -q api)
 [[ "$(docker inspect --format '{{.Config.Image}}' "$container")" == "$image" ]]
 
-# Showcase for the presentation: 31 suspended demo accounts with their lots and orders. It only
-# creates them when they are missing (an empty or rebuilt database) and never deletes anything;
-# a failure leaves its accounts suspended and does not undo the release. SHOWCASE_SEED=off skips it.
+# Presentation data (apps/api/scripts/deploy-after-start.sh), no-ops when already done, never deleting:
+# the suspended showcase when it is missing (an empty or rebuilt database gets it back) and admin
+# for BOOTSTRAP_ADMIN_PHONE from the server .env.demo. A failure only warns and keeps the release.
+# SHOWCASE_SEED=off skips it.
 if [[ "${SHOWCASE_SEED:-on}" != off ]]; then
-  "${candidate[@]}" exec --interactive=false -T api node dist/scripts/showcase-seed.js --skip-if-seeded ||
-    echo 'WARNING: showcase seed failed; its accounts stay suspended'
+  "${candidate[@]}" exec --interactive=false -T api sh scripts/deploy-after-start.sh ||
+    echo 'WARNING: presentation setup failed; showcase accounts stay suspended'
 fi
 
 # Keep the separately managed Caddy routes/assets; refresh only its exported API schema.

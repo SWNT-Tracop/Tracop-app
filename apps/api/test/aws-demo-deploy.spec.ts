@@ -33,7 +33,7 @@ if(command === 'docker') {
   if(args[0] === 'compose') {
     if(has('config')) console.log('services: {}');
     if(has('ps')) console.log(args.at(-1));
-    if(has('exec') && args.includes('dist/scripts/showcase-seed.js')) fail('showcase');
+    if(has('exec') && args.includes('scripts/deploy-after-start.sh')) fail('showcase');
     if(has('exec')) console.log('synthetic-backup');
     if(has('run')) fail('migration');
     if(has('up') && !args.some(x => x.endsWith('previous-images.yml'))) fail('activation');
@@ -124,29 +124,23 @@ if(command === 'docker') {
 
   const showcaseRuns = (calls: Call[]) =>
     calls.filter(
-      (call) => call.command === 'docker' && call.args.includes('dist/scripts/showcase-seed.js'),
+      (call) => call.command === 'docker' && call.args.includes('scripts/deploy-after-start.sh'),
     );
 
-  it('seeds the showcase after the release is live, only when it is missing', () => {
+  it('runs the presentation setup after the release is live', () => {
     const { calls } = run();
     const activation = calls.findIndex(
       (call) => call.command === 'docker' && call.args.includes('up') && call.args.includes('api'),
     );
     const [showcase] = showcaseRuns(calls);
-    expect(showcase?.args.slice(-5)).toEqual([
-      '-T',
-      'api',
-      'node',
-      'dist/scripts/showcase-seed.js',
-      '--skip-if-seeded',
-    ]);
+    expect(showcase?.args.slice(-4)).toEqual(['-T', 'api', 'sh', 'scripts/deploy-after-start.sh']);
     expect(calls.indexOf(showcase!)).toBeGreaterThan(activation);
   });
 
-  it('keeps the release when the showcase seed fails', () => {
+  it('keeps the release when the presentation setup fails', () => {
     const { result, calls } = run('showcase');
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('WARNING: showcase seed failed');
+    expect(result.stdout).toContain('WARNING: presentation setup failed');
     expect(showcaseRuns(calls)).toHaveLength(1);
   });
 
