@@ -60,7 +60,28 @@ export interface UserVerified {
   readonly occurredAt: string;
 }
 
-export type UserEvent = UserRegistered | UserVerified;
+export interface UserRoleChanged {
+  readonly type: 'UserRoleChanged';
+  readonly userId: string;
+  readonly from: UserRole;
+  readonly to: UserRole;
+  readonly occurredAt: string;
+}
+
+export interface UserSuspended {
+  readonly type: 'UserSuspended';
+  readonly userId: string;
+  readonly occurredAt: string;
+}
+
+export interface UserReactivated {
+  readonly type: 'UserReactivated';
+  readonly userId: string;
+  readonly occurredAt: string;
+}
+
+export type UserEvent =
+  UserRegistered | UserVerified | UserRoleChanged | UserSuspended | UserReactivated;
 
 export interface UserProps {
   id: string;
@@ -150,6 +171,52 @@ export class User {
       this.props.locale = input.locale;
     }
     this.props.updatedAt = occurredAt;
+  }
+
+  /**
+   * An admin moves a marketplace account to another marketplace role (for example a buyer who
+   * starts selling). Staff roles are never given or taken this way: they come from the protected
+   * CLI (`identity:create-staff`).
+   */
+  changeRole(role: UserRole, occurredAt: Date): UserRoleChanged {
+    if (
+      !SELF_REGISTERABLE_ROLES.includes(this.props.role) ||
+      !SELF_REGISTERABLE_ROLES.includes(role)
+    )
+      throw new DomainError('Solo se cambia entre roles del mercado.', 'role_not_changeable');
+    if (this.props.status === 'expired')
+      throw new DomainError('La cuenta ya no existe.', 'not_found');
+    if (role === this.props.role) throw new DomainError('La cuenta ya tiene ese rol.', 'same_role');
+    const from = this.props.role;
+    this.props.role = role;
+    this.props.updatedAt = occurredAt;
+    return {
+      type: 'UserRoleChanged',
+      userId: this.props.id,
+      from,
+      to: role,
+      occurredAt: occurredAt.toISOString(),
+    };
+  }
+
+  /** Blocks sign-in and every request; data stays (orders, ledger and consents are kept). */
+  suspend(occurredAt: Date): UserSuspended {
+    if (this.props.status === 'expired')
+      throw new DomainError('La cuenta ya no existe.', 'not_found');
+    if (this.props.status === 'suspended')
+      throw new DomainError('La cuenta ya está suspendida.', 'invalid_transition');
+    this.props.status = 'suspended';
+    this.props.updatedAt = occurredAt;
+    return { type: 'UserSuspended', userId: this.props.id, occurredAt: occurredAt.toISOString() };
+  }
+
+  /** Back to active, or to pending verification if the phone was never verified. */
+  reactivate(occurredAt: Date): UserReactivated {
+    if (this.props.status !== 'suspended')
+      throw new DomainError('La cuenta no está suspendida.', 'invalid_transition');
+    this.props.status = this.props.phoneVerifiedAt ? 'active' : 'pending_verification';
+    this.props.updatedAt = occurredAt;
+    return { type: 'UserReactivated', userId: this.props.id, occurredAt: occurredAt.toISOString() };
   }
 
   registeredEvent(): UserRegistered {

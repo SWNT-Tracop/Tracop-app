@@ -35,6 +35,8 @@ export interface SessionRepository {
   update(session: SessionProps): Promise<void>;
   revokeFamily(familyId: string, now: Date, reason: string): Promise<readonly SessionProps[]>;
   revokeSession(id: string, now: Date, reason: string): Promise<SessionProps | null>;
+  /** Revokes every live session of the user (role change, suspension). */
+  revokeAllForUser(userId: string, now: Date, reason: string): Promise<readonly SessionProps[]>;
   /**
    * The live, never rotated session of a family created at or after `since`, locked; null when
    * any session created since then was already rotated (the chain moved on: no grace).
